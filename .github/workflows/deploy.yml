@@ -89,7 +89,9 @@ jobs:
             echo "${{ secrets.GHCR_PAT }}" | docker login "$REGISTRY" -u "${{ github.actor }}" --password-stdin
 
             echo "==> Writing .env from GitHub Secret..."
-            echo "${{ secrets.ENV_FILE }}" > .env
+            cat <<'EOF' > .env
+            ${{ secrets.ENV_FILE }}
+            EOF
 
             echo "==> Using image: $IMAGE"
             export IMAGE

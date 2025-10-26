@@ -1,9 +1,6 @@
 # dependencies
 node_modules
 
-# production build
-/dist
-
 # tests & coverage
 /coverage
 /.nyc_output
