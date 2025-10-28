@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { Response } from 'express';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { UsersService } from '@/modules/users/users.service';
@@ -50,13 +51,38 @@ describe('AuthController', () => {
         updatedAt: new Date(),
       };
       authService.validateUser.mockResolvedValue(user);
-      authService.login.mockResolvedValue({ access_token: 'token' });
+      authService.login.mockResolvedValue('token');
 
-      const res = await controller.login({
-        email: 'a@b.com',
-        password: 'p',
-      } as { email: string; password: string });
-      expect(res).toEqual({ access_token: 'token' });
+      const mockCookie = jest.fn();
+      const mockResponse = {
+        cookie: mockCookie,
+      } as unknown as Response;
+
+      const res = await controller.login(
+        {
+          email: 'a@b.com',
+          password: 'p',
+        } as { email: string; password: string },
+        mockResponse,
+      );
+
+      expect(res).toEqual({
+        message: 'Login successful',
+        user: {
+          id: '1',
+          email: 'a@b.com',
+          role: Role.User,
+        },
+      });
+      expect(mockCookie).toHaveBeenCalledWith(
+        'access_token',
+        'token',
+        expect.objectContaining({
+          httpOnly: true,
+          sameSite: 'lax',
+          maxAge: 3600000,
+        }),
+      );
       expect(authService.validateUser).toHaveBeenCalledWith('a@b.com', 'p');
       expect(authService.login).toHaveBeenCalledWith({
         id: '1',

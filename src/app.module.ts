@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { UsersModule } from '@/modules/users/users.module';
 import { AuthModule } from '@/modules/auth/auth.module';
 import { AdminModule } from '@/modules/admin/admin.module';
+import { S3Module } from '@/modules/s3/s3.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { UserEntity } from '@/modules/users/user.entity';
 
@@ -23,6 +24,7 @@ import { UserEntity } from '@/modules/users/user.entity';
     AuthModule,
     UsersModule,
     AdminModule,
+    S3Module,
   ],
   controllers: [],
   providers: [],

@@ -1,0 +1,127 @@
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  S3Client,
+  PutObjectCommand,
+  DeleteObjectCommand,
+  GetObjectCommand,
+  HeadObjectCommand,
+} from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { Readable } from 'stream';
+
+@Injectable()
+export class S3Service {
+  private readonly logger = new Logger(S3Service.name);
+  private readonly s3Client: S3Client;
+  private readonly bucketName: string;
+
+  constructor() {
+    this.bucketName = process.env.AWS_S3_BUCKET_NAME || '';
+
+    this.s3Client = new S3Client({
+      region: process.env.AWS_REGION || 'ap-southeast-2',
+      credentials: {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || '',
+      },
+    });
+  }
+
+  async uploadFile(
+    file: Express.Multer.File,
+    key: string,
+  ): Promise<{ key: string }> {
+    try {
+      const command = new PutObjectCommand({
+        Bucket: this.bucketName,
+        Key: key,
+        Body: file.buffer,
+        ContentType: file.mimetype,
+        ContentLength: file.size,
+      });
+
+      await this.s3Client.send(command);
+
+      this.logger.log(`File uploaded successfully: ${key}`);
+
+      return { key };
+    } catch (error) {
+      this.logger.error(`Failed to upload file: ${error}`);
+      throw error;
+    }
+  }
+
+  async deleteFile(key: string): Promise<void> {
+    try {
+      const command = new DeleteObjectCommand({
+        Bucket: this.bucketName,
+        Key: key,
+      });
+
+      await this.s3Client.send(command);
+      this.logger.log(`File deleted successfully: ${key}`);
+    } catch (error) {
+      this.logger.error(`Failed to delete file: ${error}`);
+      throw error;
+    }
+  }
+
+  async getPresignedUrl(key: string, expiresIn = 3600): Promise<string> {
+    try {
+      const command = new GetObjectCommand({
+        Bucket: this.bucketName,
+        Key: key,
+      });
+
+      const url = await getSignedUrl(this.s3Client, command, { expiresIn });
+      return url;
+    } catch (error) {
+      this.logger.error(`Failed to generate presigned URL: ${error}`);
+      throw error;
+    }
+  }
+
+  async getFile(key: string): Promise<{
+    stream: Readable;
+    contentType: string;
+    contentLength: number;
+  }> {
+    try {
+      const headCommand = new HeadObjectCommand({
+        Bucket: this.bucketName,
+        Key: key,
+      });
+
+      const headResult = await this.s3Client.send(headCommand);
+
+      const getCommand = new GetObjectCommand({
+        Bucket: this.bucketName,
+        Key: key,
+      });
+
+      const result = await this.s3Client.send(getCommand);
+
+      if (!result.Body) {
+        throw new NotFoundException('File not found');
+      }
+
+      this.logger.log(`File retrieved successfully: ${key}`);
+
+      return {
+        stream: result.Body as Readable,
+        contentType: headResult.ContentType || 'application/octet-stream',
+        contentLength: headResult.ContentLength || 0,
+      };
+    } catch (error) {
+      this.logger.error(`Failed to get file: ${error}`);
+      const err = error as {
+        name?: string;
+        $metadata?: { httpStatusCode?: number };
+      };
+      if (err.name === 'NotFound' || err.$metadata?.httpStatusCode === 404) {
+        throw new NotFoundException(`File not found: ${key}`);
+      }
+      throw error;
+    }
+  }
+}

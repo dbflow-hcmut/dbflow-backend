@@ -1,6 +1,6 @@
 import { Controller, Get, UseGuards } from '@nestjs/common';
 import {
-  ApiBearerAuth,
+  ApiCookieAuth,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
@@ -13,7 +13,7 @@ import { RolesGuard } from '@/common/guards/roles.guard';
 @ApiTags('admin/users')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(Role.Admin)
-@ApiBearerAuth('JWT-auth')
+@ApiCookieAuth()
 @Controller()
 export class AdminUsersController {
   @ApiOperation({ summary: 'List users (admin)' })

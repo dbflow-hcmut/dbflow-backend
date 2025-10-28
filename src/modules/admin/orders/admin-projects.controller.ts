@@ -1,6 +1,6 @@
 import { Controller, Get, UseGuards } from '@nestjs/common';
 import {
-  ApiBearerAuth,
+  ApiCookieAuth,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
@@ -10,14 +10,14 @@ import { Roles } from '@/common/decorators/roles.decorator';
 import { Role } from '@/common/enums/role.enum';
 import { RolesGuard } from '@/common/guards/roles.guard';
 
-@ApiTags('admin/orders')
+@ApiTags('admin/projects')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(Role.Admin)
-@ApiBearerAuth('JWT-auth')
+@ApiCookieAuth()
 @Controller()
-export class AdminOrdersController {
-  @ApiOperation({ summary: 'List orders (admin)' })
-  @ApiOkResponse({ description: 'Orders listed' })
+export class AdminProjectsController {
+  @ApiOperation({ summary: 'List projects (admin)' })
+  @ApiOkResponse({ description: 'Projects listed' })
   @Get('')
   list() {
     return { items: [] };

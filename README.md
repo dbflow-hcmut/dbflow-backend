@@ -8,9 +8,10 @@ Robust NestJS + TypeORM (PostgreSQL) backend powering DBFlow.
 ### Features
 - NestJS 11 with modular architecture
 - TypeORM 0.3.x with migrations
-- JWT authentication scaffold
+- JWT authentication with HTTP-only cookies
+- AWS S3 file upload integration
 - Centralized validation, interceptors, and exception filtering
-- Swagger documentation
+- Swagger documentation with cookie-based auth
 
 ### Contents
 - [Prerequisites](#prerequisites)
@@ -47,6 +48,12 @@ POSTGRES_USER=postgres
 POSTGRES_PASSWORD=postgres
 POSTGRES_DB=dbflow
 JWT_SECRET=change-me
+FRONTEND_URL=http://localhost:3001
+NODE_ENV=development
+AWS_REGION=ap-southeast-1
+AWS_ACCESS_KEY_ID=your-access-key-id
+AWS_SECRET_ACCESS_KEY=your-secret-access-key
+AWS_S3_BUCKET_NAME=your-bucket-name
 ```
 
 ## Local Development
@@ -59,6 +66,14 @@ docker compose up -d
 yarn start:dev
 ```
 - Swagger (local): `http://localhost:3000/api-docs`
+
+## Authentication
+
+This API uses **cookie-based JWT authentication** for enhanced security:
+- JWT tokens are stored in HTTP-only cookies (not accessible via JavaScript)
+- Frontend must include `credentials: 'include'` in all API requests
+- CORS is configured to accept credentials from the frontend URL
+
 
 ## Database Migrations
 The TypeORM DataSource is configured in `ormconfig.ts` and reads values from `.env`.

@@ -3,6 +3,7 @@ import {
   ExecutionContext,
   Injectable,
   NestInterceptor,
+  StreamableFile,
 } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
@@ -23,10 +24,15 @@ export class TransformInterceptor<T>
     const http = context.switchToHttp();
     const res = http.getResponse<{ statusCode?: number }>();
     return next.handle().pipe(
-      map((data) => ({
-        meta: { statusCode: res.statusCode ?? 200, message: 'success' },
-        data,
-      })),
+      map((data) => {
+        if (data instanceof StreamableFile) {
+          return data as unknown as StandardResponse<T>;
+        }
+        return {
+          meta: { statusCode: res.statusCode ?? 200, message: 'success' },
+          data,
+        };
+      }),
     );
   }
 }

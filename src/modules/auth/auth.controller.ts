@@ -1,5 +1,19 @@
-import { Body, Controller, Post } from '@nestjs/common';
-import { ApiBody, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  Body,
+  Controller,
+  Post,
+  Res,
+  HttpCode,
+  HttpStatus,
+} from '@nestjs/common';
+import {
+  ApiBody,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+  ApiCookieAuth,
+} from '@nestjs/swagger';
+import { Response } from 'express';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { UsersService } from '@/modules/users/users.service';
@@ -14,18 +28,74 @@ export class AuthController {
   ) {}
 
   @Post('login')
-  @ApiOperation({ summary: 'User login' })
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'User login',
+    description: 'Authenticates user and sets JWT token in HTTP-only cookie',
+  })
   @ApiBody({ type: LoginDto })
   @ApiOkResponse({
-    schema: { properties: { access_token: { type: 'string' } } },
+    description: 'Login successful, JWT token set in cookie',
+    schema: {
+      properties: {
+        message: { type: 'string' },
+        user: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            email: { type: 'string' },
+            role: { type: 'string' },
+          },
+        },
+      },
+    },
   })
-  async login(@Body() dto: LoginDto) {
+  async login(
+    @Body() dto: LoginDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     const user = await this.authService.validateUser(dto.email, dto.password);
-    return this.authService.login({
+    const token = await this.authService.login({
       id: user.id,
       email: user.email,
       role: user.role,
     });
+
+    res.cookie('access_token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 3600000,
+    });
+
+    return {
+      message: 'Login successful',
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+      },
+    };
+  }
+
+  @Post('logout')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'User logout',
+    description: 'Clears the JWT token cookie',
+  })
+  @ApiCookieAuth()
+  @ApiOkResponse({
+    description: 'Logout successful',
+    schema: {
+      properties: {
+        message: { type: 'string' },
+      },
+    },
+  })
+  logout(@Res({ passthrough: true }) res: Response) {
+    res.clearCookie('access_token');
+    return { message: 'Logout successful' };
   }
 
   @Post('register')
