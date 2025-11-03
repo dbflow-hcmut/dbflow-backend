@@ -79,7 +79,7 @@ describe('AuthController', () => {
         'token',
         expect.objectContaining({
           httpOnly: true,
-          sameSite: 'lax',
+          sameSite: 'none',
           maxAge: 3600000,
         }),
       );
