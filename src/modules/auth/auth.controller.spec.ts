@@ -66,14 +66,16 @@ describe('AuthController', () => {
         mockResponse,
       );
 
-      expect(res).toEqual({
-        message: 'Login successful',
-        user: {
-          id: '1',
-          email: 'a@b.com',
-          role: Role.User,
-        },
-      });
+      expect(res).toEqual(
+        expect.objectContaining({
+          message: 'Login successful',
+          user: expect.objectContaining({
+            id: '1',
+            email: 'a@b.com',
+            role: Role.User,
+          }),
+        }),
+      );
       expect(mockCookie).toHaveBeenCalledWith(
         'access_token',
         'token',

@@ -1,13 +1,15 @@
 import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { ValidationPipe } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { TransformInterceptor } from '@/common/interceptors/transform.interceptor';
 import { HttpExceptionFilter } from '@/common/filters/http-exception.filter';
 import * as cookieParser from 'cookie-parser';
+import { ProjectCollaborationService } from './modules/project-collaboration/project-collaboration.service';
 
 async function bootstrap() {
+  const logger = new Logger('Bootstrap');
   const app = await NestFactory.create(AppModule);
 
   app.enableCors({
@@ -42,6 +44,10 @@ async function bootstrap() {
     },
   });
 
-  await app.listen(process.env.PORT ?? 3000);
+  const httpServer = await app.listen(process.env.PORT ?? 3000);
+  logger.log(`Application is running on: http://localhost:${process.env.PORT ?? 3000}`);
+
+  const projectCollaborationService = app.get(ProjectCollaborationService);
+  await projectCollaborationService.attachToHttpServer(httpServer, '/project-collaboration');
 }
 void bootstrap();

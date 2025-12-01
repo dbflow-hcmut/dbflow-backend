@@ -5,6 +5,8 @@ import { AdminModule } from '@/modules/admin/admin.module';
 import { S3Module } from '@/modules/s3/s3.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { UserEntity } from '@/modules/users/user.entity';
+import { ProjectCollaborationModule } from './modules/project-collaboration/project-collaboration.module';
+import { ProjectsModule } from './modules/projects/projects.module';
 
 @Module({
   imports: [
@@ -23,8 +25,10 @@ import { UserEntity } from '@/modules/users/user.entity';
     }),
     AuthModule,
     UsersModule,
-    AdminModule,
+    ProjectsModule,
     S3Module,
+    ProjectCollaborationModule,
+    AdminModule,
   ],
   controllers: [],
   providers: [],

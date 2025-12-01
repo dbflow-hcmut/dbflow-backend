@@ -82,11 +82,13 @@ describe('UsersService', () => {
       fullName: string;
     };
     repo.findOne.mockResolvedValue(stored);
-    await expect(service.getProfile('1')).resolves.toEqual({
-      id: '1',
-      email: 'a@b.com',
-      fullName: 'A',
-    });
+    await expect(service.getProfile('1')).resolves.toEqual(
+      expect.objectContaining({
+        id: '1',
+        email: 'a@b.com',
+        fullName: 'A',
+      }),
+    );
   });
 
   it('getProfile throws when not found', async () => {

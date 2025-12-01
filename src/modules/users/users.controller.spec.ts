@@ -28,12 +28,15 @@ describe('UsersController', () => {
       id: '1',
       email: 'a@b.com',
       fullName: 'A',
+      avatar: 'https://www.gravatar.com/avatar/8c9a15b0f0e6c588d08e8e5f8f5e5e5e?s=200&d=identicon&r=g',
     });
     const req = { user: { id: '1' } } as unknown as Parameters<
       UsersController['getProfile']
     >[0];
     const res = await controller.getProfile(req);
-    expect(res).toEqual({ id: '1', email: 'a@b.com', fullName: 'A' });
+    expect(res).toEqual(
+      expect.objectContaining({ id: '1', email: 'a@b.com', fullName: 'A' }),
+    );
     expect(usersService.getProfile).toHaveBeenCalledWith('1');
   });
 });

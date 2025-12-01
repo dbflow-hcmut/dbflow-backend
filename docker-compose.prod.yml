@@ -12,6 +12,18 @@ services:
     volumes:
       - dbflow_postgres_data:/var/lib/postgresql/data
 
+  redis:
+    image: redis:7-alpine
+    container_name: dbflow-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    environment:
+      REDIS_PASSWORD: "${REDIS_PASSWORD}"
+    command: ["sh", "-c", "redis-server --requirepass ${REDIS_PASSWORD} --bind 0.0.0.0 --protected-mode no --notify-keyspace-events Ex"]
+    restart: always
+
   backend:
     image: ${IMAGE}
     container_name: dbflow-backend
@@ -32,3 +44,4 @@ services:
 
 volumes:
   dbflow_postgres_data:
+  redis-data:

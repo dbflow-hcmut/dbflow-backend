@@ -41,19 +41,34 @@ cp .env.example .env
 ```
 3) Edit `.env` with your values, for example:
 ```ini
-PORT=3000
-POSTGRES_HOST=localhost
+# Database Configuration
+POSTGRES_USER=dbflow-user
+POSTGRES_PASSWORD=changeme
+POSTGRES_DB=db
 POSTGRES_PORT=5432
-POSTGRES_USER=postgres
-POSTGRES_PASSWORD=postgres
-POSTGRES_DB=dbflow
-JWT_SECRET=change-me
+POSTGRES_HOST=127.0.0.1
+
+PORT=3000
+JWT_SECRET=changeme
 FRONTEND_URL=http://localhost:3001
 NODE_ENV=development
-AWS_REGION=ap-southeast-1
-AWS_ACCESS_KEY_ID=your-access-key-id
-AWS_SECRET_ACCESS_KEY=your-secret-access-key
-AWS_S3_BUCKET_NAME=your-bucket-name
+
+# GitHub Container Registry
+IMAGE=ghcr
+
+# S3 Storage Configuration
+AWS_REGION=ap-southeast-2
+AWS_ACCESS_KEY_ID=your-access-key
+AWS_SECRET_ACCESS_KEY=your-secret-key
+AWS_S3_BUCKET_NAME=dbflow-hcmut
+
+# Redis Configuration
+REDIS_HOST=127.0.0.1
+REDIS_PORT=6379
+REDIS_PASSWORD=changeme
+
+# Project Configuration
+FOLDER_STORAGE_PROJECT=dbfl
 ```
 
 ## Local Development
