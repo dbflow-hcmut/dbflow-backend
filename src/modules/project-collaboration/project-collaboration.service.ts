@@ -23,8 +23,8 @@ const logger = new Logger('ProjectCollaborationService');
 
 interface JwtPayload {
   sub: string;
-  id: string;
   email: string;
+  roles?: string[];
 }
 
 function isJwtPayload(payload: unknown): payload is JwtPayload {
@@ -34,7 +34,6 @@ function isJwtPayload(payload: unknown): payload is JwtPayload {
   const obj = payload as Record<string, unknown>;
   return (
     typeof obj.sub === 'string' &&
-    typeof obj.id === 'string' &&
     typeof obj.email === 'string'
   );
 }
@@ -91,7 +90,7 @@ export class ProjectCollaborationService
           );
 
           const userProject = await projectsService.getUserProjectPermission(
-            payload.id,
+            payload.sub,
             projectId,
           );
 
@@ -113,7 +112,8 @@ export class ProjectCollaborationService
               permission: userProject.permission,
             },
           };
-        } catch {
+        } catch (error) {
+          logger.error('Error authenticating user:', error);
           throw new UnauthorizedException(
             'You do not have permission to access this document',
           );
