@@ -21,6 +21,24 @@ import { FOLDER_STORAGE_PROJECT } from '@/common/constants';
 
 const logger = new Logger('ProjectCollaborationService');
 
+interface JwtPayload {
+  sub: string;
+  id: string;
+  email: string;
+}
+
+function isJwtPayload(payload: unknown): payload is JwtPayload {
+  if (!payload || typeof payload !== 'object') {
+    return false;
+  }
+  const obj = payload as Record<string, unknown>;
+  return (
+    typeof obj.sub === 'string' &&
+    typeof obj.id === 'string' &&
+    typeof obj.email === 'string'
+  );
+}
+
 @Injectable()
 export class ProjectCollaborationService
   implements OnModuleInit, OnModuleDestroy
@@ -37,13 +55,13 @@ export class ProjectCollaborationService
     private readonly projectsService: ProjectsService,
   ) {}
 
-  async onModuleInit() {
+  onModuleInit() {
     logger.log('Initializing Project Collaboration Service...');
 
     const redis = this.redisClient;
     const jwtService = this.jwtService;
     const projectsService = this.projectsService;
-    const service = this;
+    const writeSchemaFilesFromDoc = this.writeSchemaFilesFromDoc.bind(this);
     const changeDebouncers = new Map<string, NodeJS.Timeout>();
     const fileWriteDebouncers = this.fileWriteDebouncers;
 
@@ -58,7 +76,13 @@ export class ProjectCollaborationService
         }
 
         try {
-          const payload = jwtService.verify(token);
+          const rawPayload: unknown = jwtService.verify(token);
+          if (!isJwtPayload(rawPayload)) {
+            throw new UnauthorizedException(
+              'You do not have permission to access this document',
+            );
+          }
+          const payload = rawPayload;
           const userId = payload.sub;
           logger.log('Authenticated user:', payload);
 
@@ -89,7 +113,7 @@ export class ProjectCollaborationService
               permission: userProject.permission,
             },
           };
-        } catch (error) {
+        } catch {
           throw new UnauthorizedException(
             'You do not have permission to access this document',
           );
@@ -142,7 +166,7 @@ export class ProjectCollaborationService
 
         if (hasDiagram) {
           logger.log(`Load diagram from File: ${diagramPath}`);
-          const diagramData = await fsExtra.readJSON(diagramPath);
+          const diagramData: unknown = await fsExtra.readJSON(diagramPath);
           diagramMap.set('data', JSON.stringify(diagramData));
         } else {
           logger.warn(`Diagram file not found: ${diagramPath}`);
@@ -150,7 +174,7 @@ export class ProjectCollaborationService
 
         if (hasModel) {
           logger.log(`Load model from File: ${modelPath}`);
-          const modelData = await fsExtra.readJSON(modelPath);
+          const modelData: unknown = await fsExtra.readJSON(modelPath);
           modelMap.set('data', JSON.stringify(modelData));
         } else {
           logger.warn(`Model file not found: ${modelPath}`);
@@ -218,12 +242,13 @@ export class ProjectCollaborationService
           );
           await redis.set(lastSyncKey, now.toString(), 'EX', 10);
 
-          await service.writeSchemaFilesFromDoc(ydoc, schemaFolder, schemaId);
+          await writeSchemaFilesFromDoc(ydoc, schemaFolder, schemaId);
         } catch (error) {
           logger.error(`Failed to store document for ${schemaId}:`, error);
         }
       },
 
+      // eslint-disable-next-line @typescript-eslint/require-await
       async onChange(data) {
         const { document, documentName, requestParameters } = data;
         const projectId = requestParameters?.get('projectId');
@@ -241,72 +266,78 @@ export class ProjectCollaborationService
           clearTimeout(existing);
         }
 
-        const timeout = setTimeout(async () => {
-          try {
-            const schemaFolder = path.join(
-              FOLDER_STORAGE_PROJECT,
-              projectId,
-              schemaId,
-            );
-            const schemaExists = await fsExtra.pathExists(schemaFolder);
-
-            if (!schemaExists) {
-              logger.warn(
-                `Schema folder cleaned up, skip syncing changes: ${schemaId}`,
+        const timeout = setTimeout(() => {
+          void (async () => {
+            try {
+              const schemaFolder = path.join(
+                FOLDER_STORAGE_PROJECT,
+                projectId,
+                schemaId,
               );
-              return;
-            }
+              const schemaExists = await fsExtra.pathExists(schemaFolder);
 
-            const syncLockKey = `sync:${redisKey}`;
-            const lockAcquired = await redis.set(
-              syncLockKey,
-              '1',
-              'EX',
-              5,
-              'NX',
-            );
-
-            if (!lockAcquired) {
-              logger.log(`Skipped sync - already in progress: ${schemaId}`);
-              return;
-            }
-
-            const update = Y.encodeStateAsUpdate(ydoc);
-            await redis.set(
-              redisKey,
-              Buffer.from(update).toString('base64'),
-              'EX',
-              3600,
-            );
-            logger.log(`onChange synced to Redis: ${redisKey}`);
-
-            await redis.del(syncLockKey);
-
-            const existingFileWrite = fileWriteDebouncers.get(redisKey);
-            if (existingFileWrite) {
-              clearTimeout(existingFileWrite);
-            }
-
-            const fileWriteTimeout = setTimeout(async () => {
-              try {
-                await service.writeSchemaFilesFromDoc(
-                  ydoc,
-                  schemaFolder,
-                  schemaId,
+              if (!schemaExists) {
+                logger.warn(
+                  `Schema folder cleaned up, skip syncing changes: ${schemaId}`,
                 );
-              } catch (e) {
-                logger.error(`Failed to write schema files for ${schemaId}`, e);
-              } finally {
-                fileWriteDebouncers.delete(redisKey);
+                return;
               }
-            }, 10000);
 
-            fileWriteDebouncers.set(redisKey, fileWriteTimeout);
-          } catch (e) {
-            logger.error(`Failed to sync onChange to Redis for ${schemaId}`, e);
-          } finally {
-            changeDebouncers.delete(redisKey);
-          }
+              const syncLockKey = `sync:${redisKey}`;
+              const lockAcquired = await redis.set(
+                syncLockKey,
+                '1',
+                'EX',
+                5,
+                'NX',
+              );
+
+              if (!lockAcquired) {
+                logger.log(`Skipped sync - already in progress: ${schemaId}`);
+                return;
+              }
+
+              const update = Y.encodeStateAsUpdate(ydoc);
+              await redis.set(
+                redisKey,
+                Buffer.from(update).toString('base64'),
+                'EX',
+                3600,
+              );
+              logger.log(`onChange synced to Redis: ${redisKey}`);
+
+              await redis.del(syncLockKey);
+
+              const existingFileWrite = fileWriteDebouncers.get(redisKey);
+              if (existingFileWrite) {
+                clearTimeout(existingFileWrite);
+              }
+
+              const fileWriteTimeout = setTimeout(() => {
+                void (async () => {
+                  try {
+                    await writeSchemaFilesFromDoc(ydoc, schemaFolder, schemaId);
+                  } catch (e) {
+                    logger.error(
+                      `Failed to write schema files for ${schemaId}`,
+                      e,
+                    );
+                  } finally {
+                    fileWriteDebouncers.delete(redisKey);
+                  }
+                })();
+              }, 10000);
+
+              fileWriteDebouncers.set(redisKey, fileWriteTimeout);
+            } catch (e) {
+              logger.error(
+                `Failed to sync onChange to Redis for ${schemaId}`,
+                e,
+              );
+            } finally {
+              changeDebouncers.delete(redisKey);
+            }
+          })();
         }, 2000);
 
         changeDebouncers.set(redisKey, timeout);
@@ -314,7 +345,7 @@ export class ProjectCollaborationService
     });
   }
 
-  async attachToHttpServer(
+  attachToHttpServer(
     httpServer: HttpServer,
     pathname = '/project-collaboration',
   ) {
@@ -332,35 +363,37 @@ export class ProjectCollaborationService
 
     httpServer.on(
       'upgrade',
-      async (request: IncomingMessage, socket: Socket, head: Buffer) => {
-        try {
-          const url = new URL(
-            request.url || '',
-            `http://${request.headers.host}`,
-          );
-          if (url.pathname !== pathname) {
-            return;
+      (request: IncomingMessage, socket: Socket, head: Buffer): void => {
+        (() => {
+          try {
+            const url = new URL(
+              request.url || '',
+              `http://${request.headers.host}`,
+            );
+            if (url.pathname !== pathname) {
+              return;
+            }
+            logger.debug(`WebSocket upgrade request for: ${url.pathname}`);
+            this.webSocketServer!.handleUpgrade(
+              request,
+              socket,
+              head,
+              (ws: WebSocket) => {
+                this.webSocketServer!.emit('connection', ws, request);
+              },
+            );
+          } catch (error) {
+            logger.error('Error handling WebSocket upgrade:', error);
+            socket.destroy();
           }
-          logger.debug(`WebSocket upgrade request for: ${url.pathname}`);
-          this.webSocketServer!.handleUpgrade(
-            request,
-            socket,
-            head,
-            (ws: WebSocket) => {
-              this.webSocketServer!.emit('connection', ws, request);
-            },
-          );
-        } catch (error) {
-          logger.error('Error handling WebSocket upgrade:', error);
-          socket.destroy();
-        }
+        })();
       },
     );
 
     this.webSocketServer.on(
       'connection',
-      async (ws: WebSocket, request: IncomingMessage) => {
-        await this.hocuspocus.handleConnection(ws, request);
+      (ws: WebSocket, request: IncomingMessage): void => {
+        void this.hocuspocus.handleConnection(ws, request);
       },
     );
 
@@ -372,7 +405,7 @@ export class ProjectCollaborationService
     );
   }
 
-  async onModuleDestroy() {
+  onModuleDestroy() {
     logger.log('Shutting down Project Collaboration service...');
 
     this.emitDebouncers.forEach((timeout) => clearTimeout(timeout));
@@ -430,7 +463,7 @@ export class ProjectCollaborationService
     }
 
     try {
-      const data = JSON.parse(dataStr);
+      const data: unknown = JSON.parse(dataStr);
       await fsExtra.writeJSON(filePath, data, { spaces: 2 });
       logger.log(`Stored ${type} schema to: ${filePath}`);
     } catch (error) {

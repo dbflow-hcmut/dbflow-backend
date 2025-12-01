@@ -83,11 +83,14 @@ export class ProjectsController {
       const userId = req.user.id;
       const project = await this.projectsService.createProject(userId, dto);
       return project;
-    } catch (error) {
+    } catch (error: unknown) {
       if (error instanceof HttpException) {
         throw error;
       }
-      throw new InternalServerErrorException(error.message);
+      if (error instanceof Error) {
+        throw new InternalServerErrorException(error.message);
+      }
+      throw new InternalServerErrorException('Internal server error');
     }
   }
 
@@ -126,11 +129,14 @@ export class ProjectsController {
       const userId = req.user.id;
       const projects = await this.projectsService.getAllProjects(userId, query);
       return projects;
-    } catch (error) {
+    } catch (error: unknown) {
       if (error instanceof HttpException) {
         throw error;
       }
-      throw new InternalServerErrorException(error.message);
+      if (error instanceof Error) {
+        throw new InternalServerErrorException(error.message);
+      }
+      throw new InternalServerErrorException('Internal server error');
     }
   }
 
@@ -176,11 +182,14 @@ export class ProjectsController {
         projectId,
       );
       return project;
-    } catch (error) {
+    } catch (error: unknown) {
       if (error instanceof HttpException) {
         throw error;
       }
-      throw new InternalServerErrorException(error.message);
+      if (error instanceof Error) {
+        throw new InternalServerErrorException(error.message);
+      }
+      throw new InternalServerErrorException('Internal server error');
     }
   }
 
@@ -241,11 +250,14 @@ export class ProjectsController {
         },
         data: schema,
       };
-    } catch (error) {
+    } catch (error: unknown) {
       if (error instanceof HttpException) {
         throw error;
       }
-      throw new InternalServerErrorException(error.message);
+      if (error instanceof Error) {
+        throw new InternalServerErrorException(error.message);
+      }
+      throw new InternalServerErrorException('Internal server error');
     }
   }
 
@@ -291,11 +303,14 @@ export class ProjectsController {
         projectId,
       );
       return schemas;
-    } catch (error) {
+    } catch (error: unknown) {
       if (error instanceof HttpException) {
         throw error;
       }
-      throw new InternalServerErrorException(error.message);
+      if (error instanceof Error) {
+        throw new InternalServerErrorException(error.message);
+      }
+      throw new InternalServerErrorException('Internal server error');
     }
   }
 }

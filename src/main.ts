@@ -61,7 +61,7 @@ async function bootstrap() {
   const httpServer: HttpServer = rawHttpServer;
 
   const projectCollaborationService = app.get(ProjectCollaborationService);
-  await projectCollaborationService.attachToHttpServer(
+  projectCollaborationService.attachToHttpServer(
     httpServer,
     '/project-collaboration',
   );
