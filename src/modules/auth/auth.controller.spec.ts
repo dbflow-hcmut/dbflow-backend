@@ -83,7 +83,8 @@ describe('AuthController', () => {
         expect.objectContaining({
           httpOnly: true,
           sameSite: 'none',
-          maxAge: 3600000,
+          maxAge: 7 * 24 * 60 * 60 * 1000,
+          secure: false,
         }),
       );
       expect(authService.validateUser).toHaveBeenCalledWith('a@b.com', 'p');
