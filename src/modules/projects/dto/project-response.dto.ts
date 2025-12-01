@@ -36,7 +36,10 @@ class OwnerDto {
   @ApiProperty({ example: 'mike.johnson@example.com' })
   email: string;
 
-  @ApiProperty({ example: 'https://www.gravatar.com/avatar/8c9a15b0f0e6c588d08e8e5f8f5e5e5e?s=200&d=identicon&r=g' })
+  @ApiProperty({
+    example:
+      'https://www.gravatar.com/avatar/8c9a15b0f0e6c588d08e8e5f8f5e5e5e?s=200&d=identicon&r=g',
+  })
   avatar: string;
 }
 

@@ -3,10 +3,3 @@ export enum InviteStatus {
   Accepted = 'accepted',
   Rejected = 'rejected',
 }
-
-
-
-
-
-
-

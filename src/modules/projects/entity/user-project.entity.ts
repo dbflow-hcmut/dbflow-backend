@@ -1,10 +1,4 @@
-import {
-  Entity,
-  PrimaryColumn,
-  Column,
-  ManyToOne,
-  JoinColumn,
-} from 'typeorm';
+import { Entity, PrimaryColumn, Column, ManyToOne, JoinColumn } from 'typeorm';
 import { UserEntity } from '@/modules/users/user.entity';
 import { ProjectEntity } from './project.entity';
 import { UserProjectPermission } from '@/common/enums/user-project-permission.enum';
@@ -34,4 +28,3 @@ export class UserProjectEntity {
   @JoinColumn({ name: 'project_id' })
   project: ProjectEntity;
 }
-

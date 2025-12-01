@@ -15,4 +15,3 @@ export class StandardResponseDto<T> {
   @ApiProperty()
   data: T;
 }
-

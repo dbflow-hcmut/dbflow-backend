@@ -61,10 +61,6 @@ export class ProjectEntity {
   @OneToMany(() => UserProjectEntity, (userProject) => userProject.project)
   userProjects: UserProjectEntity[];
 
-  @OneToMany(
-    () => ProjectInvitationEntity,
-    (invitation) => invitation.project,
-  )
+  @OneToMany(() => ProjectInvitationEntity, (invitation) => invitation.project)
   invitations: ProjectInvitationEntity[];
 }
-

@@ -100,4 +100,3 @@ export class InternalServerErrorResponseDto {
   @ApiProperty({ nullable: true })
   data: unknown;
 }
-

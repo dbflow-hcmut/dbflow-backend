@@ -45,4 +45,3 @@ export class GetAllSchemasSuccessResponseDto {
   @ApiProperty({ type: [SchemaResponseDto] })
   data: SchemaResponseDto[];
 }
-

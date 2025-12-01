@@ -47,6 +47,9 @@ export class UsersService {
   }
 
   private generateEmailHash(email: string): string {
-    return crypto.createHash('md5').update(email.toLowerCase().trim()).digest('hex');
+    return crypto
+      .createHash('md5')
+      .update(email.toLowerCase().trim())
+      .digest('hex');
   }
 }

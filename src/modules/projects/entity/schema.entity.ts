@@ -56,4 +56,3 @@ export class SchemaEntity {
   @JoinColumn({ name: 'project_id' })
   project: ProjectEntity;
 }
-

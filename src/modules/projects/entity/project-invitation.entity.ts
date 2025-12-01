@@ -74,4 +74,3 @@ export class ProjectInvitationEntity {
   @JoinColumn({ name: 'inviter_user_id' })
   inviterUser: UserEntity;
 }
-

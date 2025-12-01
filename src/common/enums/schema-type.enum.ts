@@ -3,4 +3,3 @@ export enum SchemaType {
   Logical = 'logical',
   Physical = 'physical',
 }
-

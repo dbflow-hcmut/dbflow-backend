@@ -9,8 +9,7 @@ import {
   Post,
   Query,
   Req,
-  Res,
-  UseGuards
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBody,
@@ -26,8 +25,15 @@ import { CreateProjectDto } from './dto/createProject.dto';
 import { GetProjectDto } from './dto/getProject.dto';
 import { CreateSchemaDto } from './dto/createSchema.dto';
 import { ProjectsService } from './projects.service';
-import { CreateProjectSuccessResponseDto, GetAllProjectsSuccessResponseDto, GetProjectSuccessResponseDto } from './dto/project-response.dto';
-import { CreateSchemaSuccessResponseDto, GetAllSchemasSuccessResponseDto } from './dto/schema-response.dto';
+import {
+  CreateProjectSuccessResponseDto,
+  GetAllProjectsSuccessResponseDto,
+  GetProjectSuccessResponseDto,
+} from './dto/project-response.dto';
+import {
+  CreateSchemaSuccessResponseDto,
+  GetAllSchemasSuccessResponseDto,
+} from './dto/schema-response.dto';
 import {
   BadRequestResponseDto,
   UnauthorizedResponseDto,
@@ -39,9 +45,7 @@ import {
 @ApiTags('projects')
 @Controller('projects')
 export class ProjectsController {
-  constructor(
-    private readonly projectsService: ProjectsService
-  ) { }
+  constructor(private readonly projectsService: ProjectsService) {}
 
   @Post('')
   @UseGuards(JwtAuthGuard)
@@ -94,7 +98,12 @@ export class ProjectsController {
     summary: 'Get all projects',
     description: 'Get all projects with optional keyword search',
   })
-  @ApiQuery({ name: 'keyword', required: false, type: String, description: 'Search keyword for project name' })
+  @ApiQuery({
+    name: 'keyword',
+    required: false,
+    type: String,
+    description: 'Search keyword for project name',
+  })
   @ApiOkResponse({
     description: 'Projects retrieved successfully',
     type: GetAllProjectsSuccessResponseDto,
@@ -156,10 +165,16 @@ export class ProjectsController {
     description: 'Internal Server Error',
     type: InternalServerErrorResponseDto,
   })
-  async getProjectInformation(@Req() req: AuthenticatedRequest, @Param('projectId') projectId: string) {
+  async getProjectInformation(
+    @Req() req: AuthenticatedRequest,
+    @Param('projectId') projectId: string,
+  ) {
     try {
       const userId = req.user.id;
-      const project = await this.projectsService.getProjectInformation(userId, projectId);
+      const project = await this.projectsService.getProjectInformation(
+        userId,
+        projectId,
+      );
       return project;
     } catch (error) {
       if (error instanceof HttpException) {
@@ -214,7 +229,11 @@ export class ProjectsController {
   ) {
     try {
       const userId = req.user.id;
-      const schema = await this.projectsService.createSchema(userId, projectId, dto);
+      const schema = await this.projectsService.createSchema(
+        userId,
+        projectId,
+        dto,
+      );
       return {
         meta: {
           statusCode: 201,
@@ -261,10 +280,16 @@ export class ProjectsController {
     description: 'Internal Server Error',
     type: InternalServerErrorResponseDto,
   })
-  async getAllSchemas(@Req() req: AuthenticatedRequest, @Param('projectId') projectId: string) {
+  async getAllSchemas(
+    @Req() req: AuthenticatedRequest,
+    @Param('projectId') projectId: string,
+  ) {
     try {
       const userId = req.user.id;
-      const schemas = await this.projectsService.getAllSchemas(userId, projectId);
+      const schemas = await this.projectsService.getAllSchemas(
+        userId,
+        projectId,
+      );
       return schemas;
     } catch (error) {
       if (error instanceof HttpException) {

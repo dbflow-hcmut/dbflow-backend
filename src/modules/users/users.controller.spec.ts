@@ -28,7 +28,8 @@ describe('UsersController', () => {
       id: '1',
       email: 'a@b.com',
       fullName: 'A',
-      avatar: 'https://www.gravatar.com/avatar/8c9a15b0f0e6c588d08e8e5f8f5e5e5e?s=200&d=identicon&r=g',
+      avatar:
+        'https://www.gravatar.com/avatar/8c9a15b0f0e6c588d08e8e5f8f5e5e5e?s=200&d=identicon&r=g',
     });
     const req = { user: { id: '1' } } as unknown as Parameters<
       UsersController['getProfile']

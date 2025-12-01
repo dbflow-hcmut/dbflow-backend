@@ -14,4 +14,3 @@ export class CreateSchemaDto {
   @IsNotEmpty()
   type: SchemaType;
 }
-

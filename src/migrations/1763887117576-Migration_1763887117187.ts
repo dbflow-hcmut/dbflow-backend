@@ -1,9 +1,8 @@
-import { MigrationInterface, QueryRunner } from "typeorm";
+import { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class Migration17638871171871763887117576 implements MigrationInterface {
-
-    public async up(queryRunner: QueryRunner): Promise<void> {
-        await queryRunner.query(`
+  public async up(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`
           DO $$ BEGIN
             CREATE TYPE schema_type AS ENUM ('conceptual', 'logical', 'physical');
           EXCEPTION
@@ -25,14 +24,13 @@ export class Migration17638871171871763887117576 implements MigrationInterface {
           CREATE UNIQUE INDEX IF NOT EXISTS "uq_schemas_project_name"
             ON "schemas"("project_id", "name");
         `);
-    }
+  }
 
-    public async down(queryRunner: QueryRunner): Promise<void> {
-        await queryRunner.query(`
+  public async down(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`
           DROP INDEX IF EXISTS "uq_schemas_project_name";
           DROP TABLE IF EXISTS "schemas";
           DROP TYPE IF EXISTS schema_type;
         `);
-    }
-
+  }
 }

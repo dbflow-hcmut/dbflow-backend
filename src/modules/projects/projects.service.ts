@@ -1,8 +1,13 @@
-import { Injectable, Logger, NotFoundException, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { CreateProjectDto } from './dto/createProject.dto';
 import { GetProjectDto } from './dto/getProject.dto';
 import { CreateSchemaDto } from './dto/createSchema.dto';
-import { Repository, ILike } from 'typeorm';
+import { Repository } from 'typeorm';
 import { ProjectEntity } from './entity/project.entity';
 import { SchemaEntity } from './entity/schema.entity';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -43,7 +48,7 @@ export class ProjectsService {
 
     const projectFolder = path.join(FOLDER_STORAGE_PROJECT, project.id);
     await fsExtra.mkdir(projectFolder, { recursive: true });
-    
+
     const projectWithOwner = await this.projectsRepository.findOne({
       where: { id: project.id },
       relations: ['owner'],
@@ -119,7 +124,10 @@ export class ProjectsService {
   }
 
   private generateEmailHash(email: string): string {
-    return crypto.createHash('md5').update(email.toLowerCase().trim()).digest('hex');
+    return crypto
+      .createHash('md5')
+      .update(email.toLowerCase().trim())
+      .digest('hex');
   }
 
   async getProjectInformation(userId: string, projectId: string) {
@@ -131,7 +139,9 @@ export class ProjectsService {
     });
 
     if (!userProject) {
-      throw new NotFoundException('User does not have permission to view this project');
+      throw new NotFoundException(
+        'User does not have permission to view this project',
+      );
     }
 
     return this.formatProjectResponse(userProject.project);
@@ -186,7 +196,9 @@ export class ProjectsService {
     await fsExtra.writeJSON(diagramPath, diagramTemplate, { spaces: 2 });
     await fsExtra.writeJSON(modelPath, modelTemplate, { spaces: 2 });
 
-    logger.log(`Initialized schema templates for schema ${schemaId} in ${schemaFolder}`);
+    logger.log(
+      `Initialized schema templates for schema ${schemaId} in ${schemaFolder}`,
+    );
   }
 
   async getUserProjectPermission(
@@ -206,7 +218,9 @@ export class ProjectsService {
     logger.log('userProject', userProject);
 
     if (!userProject) {
-      throw new NotFoundException('User does not have permission to access this project');
+      throw new NotFoundException(
+        'User does not have permission to access this project',
+      );
     }
 
     const project = await this.projectsRepository.findOne({
@@ -222,7 +236,9 @@ export class ProjectsService {
     const userProject = await this.getUserProjectPermission(userId, projectId);
 
     if (!userProject) {
-      throw new NotFoundException('User does not have permission to access this project');
+      throw new NotFoundException(
+        'User does not have permission to access this project',
+      );
     }
 
     const project = await this.projectsRepository.findOne({
@@ -275,7 +291,11 @@ export class ProjectsService {
       type: dto.type,
     });
 
-    const schemaFolder = path.join(FOLDER_STORAGE_PROJECT, projectId, schema.id);
+    const schemaFolder = path.join(
+      FOLDER_STORAGE_PROJECT,
+      projectId,
+      schema.id,
+    );
     await fsExtra.mkdir(schemaFolder, { recursive: true });
 
     await this.initializeSchemaTemplates(schemaFolder, schema.id, schema.name);

@@ -7,6 +7,11 @@ import { TransformInterceptor } from '@/common/interceptors/transform.intercepto
 import { HttpExceptionFilter } from '@/common/filters/http-exception.filter';
 import * as cookieParser from 'cookie-parser';
 import { ProjectCollaborationService } from './modules/project-collaboration/project-collaboration.service';
+import type { Server as HttpServer } from 'http';
+
+function isHttpServer(server: unknown): server is HttpServer {
+  return !!server && typeof (server as HttpServer).on === 'function';
+}
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
@@ -44,10 +49,21 @@ async function bootstrap() {
     },
   });
 
-  const httpServer = await app.listen(process.env.PORT ?? 3000);
-  logger.log(`Application is running on: http://localhost:${process.env.PORT ?? 3000}`);
+  await app.listen(process.env.PORT ?? 3000);
+  logger.log(
+    `Application is running on: http://localhost:${process.env.PORT ?? 3000}`,
+  );
+
+  const rawHttpServer: unknown = app.getHttpServer();
+  if (!isHttpServer(rawHttpServer)) {
+    throw new Error('Invalid HTTP server instance');
+  }
+  const httpServer: HttpServer = rawHttpServer;
 
   const projectCollaborationService = app.get(ProjectCollaborationService);
-  await projectCollaborationService.attachToHttpServer(httpServer, '/project-collaboration');
+  await projectCollaborationService.attachToHttpServer(
+    httpServer,
+    '/project-collaboration',
+  );
 }
 void bootstrap();

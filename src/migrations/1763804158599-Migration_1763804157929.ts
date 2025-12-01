@@ -1,9 +1,8 @@
-import { MigrationInterface, QueryRunner } from "typeorm";
+import { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class Migration17638041579291763804158599 implements MigrationInterface {
-
-    public async up(queryRunner: QueryRunner): Promise<void> {
-        await queryRunner.query(`
+  public async up(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`
           DO $$ BEGIN
             CREATE TYPE user_project_permission AS ENUM ('viewer', 'editor');
           EXCEPTION
@@ -76,10 +75,10 @@ export class Migration17638041579291763804158599 implements MigrationInterface {
           CREATE UNIQUE INDEX IF NOT EXISTS "uq_project_invitation_status"
             ON "project_invitations"("project_id", "invited_user_id", "status");
         `);
-    }
+  }
 
-    public async down(queryRunner: QueryRunner): Promise<void> {
-        await queryRunner.query(`
+  public async down(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`
           DROP INDEX IF EXISTS "uq_project_invitation_status";
     
           DROP TABLE IF EXISTS "project_invitations";
@@ -90,6 +89,5 @@ export class Migration17638041579291763804158599 implements MigrationInterface {
           DROP TYPE IF EXISTS project_visibility;
           DROP TYPE IF EXISTS user_project_permission;
         `);
-    }
-
+  }
 }
