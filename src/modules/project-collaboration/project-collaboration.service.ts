@@ -14,12 +14,11 @@ import type { Socket } from 'net';
 import { WebSocketServer, WebSocket } from 'ws';
 import { JwtService } from '@nestjs/jwt';
 import { ProjectsService } from '../projects/projects.service';
+import { S3Service } from '../s3/s3.service';
 import * as Y from 'yjs';
-import * as path from 'path';
-import * as fsExtra from 'fs-extra';
-import { FOLDER_STORAGE_PROJECT } from '@/common/constants';
 
 const logger = new Logger('ProjectCollaborationService');
+const S3_SYNC_INTERVAL_MS = 60000;
 
 interface JwtPayload {
   sub: string;
@@ -32,16 +31,12 @@ function isJwtPayload(payload: unknown): payload is JwtPayload {
     return false;
   }
   const obj = payload as Record<string, unknown>;
-  return (
-    typeof obj.sub === 'string' &&
-    typeof obj.email === 'string'
-  );
+  return typeof obj.sub === 'string' && typeof obj.email === 'string';
 }
 
 @Injectable()
 export class ProjectCollaborationService
-  implements OnModuleInit, OnModuleDestroy
-{
+  implements OnModuleInit, OnModuleDestroy {
   private hocuspocus: Hocuspocus;
   private webSocketServer?: WebSocketServer;
   private emitDebouncers = new Map<string, NodeJS.Timeout>();
@@ -50,9 +45,10 @@ export class ProjectCollaborationService
   constructor(
     @Inject('REDIS_CLIENT') private readonly redisClient: Redis,
     private readonly jwtService: JwtService,
+    private readonly s3Service: S3Service,
     @Inject(forwardRef(() => ProjectsService))
     private readonly projectsService: ProjectsService,
-  ) {}
+  ) { }
 
   onModuleInit() {
     logger.log('Initializing Project Collaboration Service...');
@@ -60,7 +56,8 @@ export class ProjectCollaborationService
     const redis = this.redisClient;
     const jwtService = this.jwtService;
     const projectsService = this.projectsService;
-    const writeSchemaFilesFromDoc = this.writeSchemaFilesFromDoc.bind(this);
+    const s3Service = this.s3Service;
+    const trySyncToS3 = this.trySyncToS3.bind(this);
     const changeDebouncers = new Map<string, NodeJS.Timeout>();
     const fileWriteDebouncers = this.fileWriteDebouncers;
 
@@ -132,6 +129,10 @@ export class ProjectCollaborationService
           return null;
         }
 
+        if (schemaId.startsWith('project-presence-')) {
+          return new Y.Doc();
+        }
+
         const redisKey = `diagram:${projectId}:${schemaId}`;
 
         const cached = await redis.get(redisKey);
@@ -142,20 +143,18 @@ export class ProjectCollaborationService
           return ydoc;
         }
 
-        const schemaFolder = path.join(
-          FOLDER_STORAGE_PROJECT,
-          projectId,
-          schemaId,
-        );
-        const diagramPath = path.join(schemaFolder, 'diagram.schema.json');
-        const modelPath = path.join(schemaFolder, 'model.schema.json');
+        const currentVersionPrefix = `projects/${projectId}/schemas/${schemaId}/latest`;
+        const diagramS3Key = `${currentVersionPrefix}/diagram.schema.json`;
+        const modelS3Key = `${currentVersionPrefix}/model.schema.json`;
 
-        const hasDiagram = await fsExtra.pathExists(diagramPath);
-        const hasModel = await fsExtra.pathExists(modelPath);
+        const [diagramData, modelData] = await Promise.all([
+          s3Service.getJsonObject(diagramS3Key),
+          s3Service.getJsonObject(modelS3Key),
+        ]);
 
-        if (!hasDiagram && !hasModel) {
+        if (!diagramData && !modelData) {
           logger.warn(
-            `Schema files not found. diagram: ${diagramPath}, model: ${modelPath}`,
+            `Schema files not found in S3. diagram: ${diagramS3Key}, model: ${modelS3Key}`,
           );
           return new Y.Doc();
         }
@@ -164,20 +163,18 @@ export class ProjectCollaborationService
         const diagramMap = ydoc.getMap('diagram');
         const modelMap = ydoc.getMap('model');
 
-        if (hasDiagram) {
-          logger.log(`Load diagram from File: ${diagramPath}`);
-          const diagramData: unknown = await fsExtra.readJSON(diagramPath);
+        if (diagramData) {
+          logger.log(`Load diagram from S3: ${diagramS3Key}`);
           diagramMap.set('data', JSON.stringify(diagramData));
         } else {
-          logger.warn(`Diagram file not found: ${diagramPath}`);
+          logger.warn(`Diagram file not found in S3: ${diagramS3Key}`);
         }
 
-        if (hasModel) {
-          logger.log(`Load model from File: ${modelPath}`);
-          const modelData: unknown = await fsExtra.readJSON(modelPath);
+        if (modelData) {
+          logger.log(`Load model from S3: ${modelS3Key}`);
           modelMap.set('data', JSON.stringify(modelData));
         } else {
-          logger.warn(`Model file not found: ${modelPath}`);
+          logger.warn(`Model file not found in S3: ${modelS3Key}`);
         }
 
         const update = Y.encodeStateAsUpdate(ydoc);
@@ -203,36 +200,14 @@ export class ProjectCollaborationService
           return;
         }
 
-        const ydoc = document as Y.Doc;
-        const redisKey = `diagram:${projectId}:${schemaId}`;
-        const lastSyncKey = `lastSync:${redisKey}`;
-        const schemaFolder = path.join(
-          FOLDER_STORAGE_PROJECT,
-          projectId,
-          schemaId,
-        );
-
-        const schemaExists = await fsExtra.pathExists(schemaFolder);
-        if (!schemaExists) {
-          logger.warn(
-            `Schema folder cleaned up, skip storing document: ${schemaId}`,
-          );
-          await Promise.allSettled([
-            redis.del(redisKey),
-            redis.del(lastSyncKey),
-          ]);
+        if (schemaId.startsWith('project-presence-')) {
           return;
         }
 
+        const ydoc = document as Y.Doc;
+        const redisKey = `diagram:${projectId}:${schemaId}`;
+
         try {
-          const lastSync = await redis.get(lastSyncKey);
-          const now = Date.now();
-
-          if (lastSync && now - parseInt(lastSync) < 10000) {
-            logger.log(`Skipped store - recently synced: ${schemaId}`);
-            return;
-          }
-
           const update = Y.encodeStateAsUpdate(ydoc);
           await redis.set(
             redisKey,
@@ -240,9 +215,8 @@ export class ProjectCollaborationService
             'EX',
             3600,
           );
-          await redis.set(lastSyncKey, now.toString(), 'EX', 10);
 
-          await writeSchemaFilesFromDoc(ydoc, schemaFolder, schemaId);
+          await trySyncToS3(ydoc, projectId, schemaId);
         } catch (error) {
           logger.error(`Failed to store document for ${schemaId}:`, error);
         }
@@ -254,7 +228,7 @@ export class ProjectCollaborationService
         const projectId = requestParameters?.get('projectId');
         const schemaId = documentName;
 
-        if (!projectId || !schemaId) {
+        if (!projectId || !schemaId || schemaId.startsWith('project-presence-')) {
           return;
         }
 
@@ -269,20 +243,6 @@ export class ProjectCollaborationService
         const timeout = setTimeout(() => {
           void (async () => {
             try {
-              const schemaFolder = path.join(
-                FOLDER_STORAGE_PROJECT,
-                projectId,
-                schemaId,
-              );
-              const schemaExists = await fsExtra.pathExists(schemaFolder);
-
-              if (!schemaExists) {
-                logger.warn(
-                  `Schema folder cleaned up, skip syncing changes: ${schemaId}`,
-                );
-                return;
-              }
-
               const syncLockKey = `sync:${redisKey}`;
               const lockAcquired = await redis.set(
                 syncLockKey,
@@ -316,7 +276,7 @@ export class ProjectCollaborationService
               const fileWriteTimeout = setTimeout(() => {
                 void (async () => {
                   try {
-                    await writeSchemaFilesFromDoc(ydoc, schemaFolder, schemaId);
+                    await trySyncToS3(ydoc, projectId, schemaId);
                   } catch (e) {
                     logger.error(
                       `Failed to write schema files for ${schemaId}`,
@@ -326,7 +286,7 @@ export class ProjectCollaborationService
                     fileWriteDebouncers.delete(redisKey);
                   }
                 })();
-              }, 10000);
+              }, S3_SYNC_INTERVAL_MS);
 
               fileWriteDebouncers.set(redisKey, fileWriteTimeout);
             } catch (e) {
@@ -425,28 +385,48 @@ export class ProjectCollaborationService
     logger.log('Project Collaboration server stopped');
   }
 
-  private async writeSchemaFilesFromDoc(
+  private async trySyncToS3(
     ydoc: Y.Doc,
-    schemaFolder: string,
+    projectId: string,
     schemaId: string,
   ) {
-    const diagramPath = path.join(schemaFolder, 'diagram.schema.json');
-    const modelPath = path.join(schemaFolder, 'model.schema.json');
+    const redisKey = `diagram:${projectId}:${schemaId}`;
+    const lastSyncKey = `lastSync:${redisKey}`;
+    const lastSync = await this.redisClient.get(lastSyncKey);
+    const now = Date.now();
+
+    if (lastSync && now - parseInt(lastSync) < S3_SYNC_INTERVAL_MS) {
+      logger.log(`Skipped S3 sync - recently synced: ${schemaId}`);
+      return;
+    }
+
+    await this.writeSchemaFilesFromDoc(ydoc, projectId, schemaId);
+    await this.redisClient.set(lastSyncKey, now.toString(), 'EX', 3600);
+  }
+
+  private async writeSchemaFilesFromDoc(
+    ydoc: Y.Doc,
+    projectId: string,
+    schemaId: string,
+  ) {
+    const currentVersionPrefix = `projects/${projectId}/schemas/${schemaId}/latest`;
+    const diagramS3Key = `${currentVersionPrefix}/diagram.schema.json`;
+    const modelS3Key = `${currentVersionPrefix}/model.schema.json`;
 
     await Promise.allSettled([
       this.writeSchemaFile(
         ydoc.getMap('diagram'),
-        diagramPath,
+        diagramS3Key,
         schemaId,
         'diagram',
       ),
-      this.writeSchemaFile(ydoc.getMap('model'), modelPath, schemaId, 'model'),
+      this.writeSchemaFile(ydoc.getMap('model'), modelS3Key, schemaId, 'model'),
     ]);
   }
 
   private async writeSchemaFile(
     map: Y.Map<unknown>,
-    filePath: string,
+    s3Key: string,
     schemaId: string,
     type: 'diagram' | 'model',
   ) {
@@ -464,8 +444,8 @@ export class ProjectCollaborationService
 
     try {
       const data: unknown = JSON.parse(dataStr);
-      await fsExtra.writeJSON(filePath, data, { spaces: 2 });
-      logger.log(`Stored ${type} schema to: ${filePath}`);
+      await this.s3Service.putJsonObject(s3Key, data);
+      logger.log(`Stored ${type} schema to S3: ${s3Key}`);
     } catch (error) {
       logger.error(`Failed to persist ${type} schema for ${schemaId}`, error);
     }

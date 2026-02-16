@@ -124,4 +124,49 @@ export class S3Service {
       throw error;
     }
   }
+  async putJsonObject(key: string, data: unknown): Promise<void> {
+    try {
+      const jsonString = JSON.stringify(data);
+      const command = new PutObjectCommand({
+        Bucket: this.bucketName,
+        Key: key,
+        Body: jsonString,
+        ContentType: 'application/json',
+      });
+
+      await this.s3Client.send(command);
+      this.logger.log(`JSON object saved successfully: ${key}`);
+    } catch (error) {
+      this.logger.error(`Failed to save JSON object: ${error}`);
+      throw error;
+    }
+  }
+
+  async getJsonObject<T>(key: string): Promise<T | null> {
+    try {
+      const command = new GetObjectCommand({
+        Bucket: this.bucketName,
+        Key: key,
+      });
+
+      const response = await this.s3Client.send(command);
+      if (!response.Body) {
+        return null;
+      }
+
+      const str = await response.Body.transformToString();
+      return JSON.parse(str) as T;
+    } catch (error) {
+      const err = error as {
+        name?: string;
+        $metadata?: { httpStatusCode?: number };
+      };
+      if (err.name === 'NoSuchKey' || err.$metadata?.httpStatusCode === 404) {
+        this.logger.warn(`JSON object not found: ${key}`);
+        return null;
+      }
+      this.logger.error(`Failed to get JSON object: ${error}`);
+      throw error;
+    }
+  }
 }

@@ -14,10 +14,9 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { UserProjectEntity } from './entity/user-project.entity';
 import { ProjectInvitationEntity } from './entity/project-invitation.entity';
 import { UserProjectPermission } from '@/common/enums/user-project-permission.enum';
-import { FOLDER_STORAGE_PROJECT } from '@/common/constants';
-import * as path from 'path';
-import * as fsExtra from 'fs-extra';
+import { S3Service } from '../s3/s3.service';
 import * as crypto from 'crypto';
+import { SchemaType } from '@/common/enums/schema-type.enum';
 
 const logger = new Logger('ProjectsService');
 
@@ -32,7 +31,8 @@ export class ProjectsService {
     private readonly projectInvitationsRepository: Repository<ProjectInvitationEntity>,
     @InjectRepository(SchemaEntity)
     private readonly schemasRepository: Repository<SchemaEntity>,
-  ) {}
+    private readonly s3Service: S3Service,
+  ) { }
 
   async createProject(userId: string, dto: CreateProjectDto) {
     const project = await this.projectsRepository.save({
@@ -46,8 +46,10 @@ export class ProjectsService {
       permission: UserProjectPermission.Editor,
     });
 
-    const projectFolder = path.join(FOLDER_STORAGE_PROJECT, project.id);
-    await fsExtra.mkdir(projectFolder, { recursive: true });
+    await this.createSchema(userId, project.id, {
+      name: 'Untitled Diagram',
+      type: SchemaType.Conceptual,
+    });
 
     const projectWithOwner = await this.projectsRepository.findOne({
       where: { id: project.id },
@@ -148,7 +150,7 @@ export class ProjectsService {
   }
 
   private async initializeSchemaTemplates(
-    schemaFolder: string,
+    projectId: string,
     schemaId: string,
     schemaName: string,
   ) {
@@ -190,14 +192,15 @@ export class ProjectsService {
       },
     };
 
-    const diagramPath = path.join(schemaFolder, 'diagram.schema.json');
-    const modelPath = path.join(schemaFolder, 'model.schema.json');
+    const currentVersionPrefix = `projects/${projectId}/schemas/${schemaId}/latest`;
+    const diagramS3Key = `${currentVersionPrefix}/diagram.schema.json`;
+    const modelS3Key = `${currentVersionPrefix}/model.schema.json`;
 
-    await fsExtra.writeJSON(diagramPath, diagramTemplate, { spaces: 2 });
-    await fsExtra.writeJSON(modelPath, modelTemplate, { spaces: 2 });
+    await this.s3Service.putJsonObject(diagramS3Key, diagramTemplate);
+    await this.s3Service.putJsonObject(modelS3Key, modelTemplate);
 
     logger.log(
-      `Initialized schema templates for schema ${schemaId} in ${schemaFolder}`,
+      `Initialized schema templates for schema ${schemaId} in S3: ${currentVersionPrefix}`,
     );
   }
 
@@ -291,14 +294,84 @@ export class ProjectsService {
       type: dto.type,
     });
 
-    const schemaFolder = path.join(
-      FOLDER_STORAGE_PROJECT,
-      projectId,
-      schema.id,
-    );
-    await fsExtra.mkdir(schemaFolder, { recursive: true });
+    await this.initializeSchemaTemplates(schema.projectId, schema.id, schema.name);
 
-    await this.initializeSchemaTemplates(schemaFolder, schema.id, schema.name);
+    return {
+      id: schema.id,
+      projectId: schema.projectId,
+      name: schema.name,
+      type: schema.type,
+      createdAt: schema.createdAt,
+      updatedAt: schema.updatedAt,
+    };
+  }
+
+  async getSchema(userId: string, projectId: string, schemaId: string) {
+    await this.checkViewPermission(userId, projectId);
+
+    const schema = await this.schemasRepository.findOne({
+      where: { id: schemaId, projectId: projectId },
+    });
+
+    if (!schema) {
+      throw new NotFoundException('Schema not found');
+    }
+
+    return {
+      id: schema.id,
+      projectId: schema.projectId,
+      name: schema.name,
+      type: schema.type,
+      createdAt: schema.createdAt,
+      updatedAt: schema.updatedAt,
+    };
+  }
+
+  async deleteSchema(userId: string, projectId: string, schemaId: string) {
+    await this.checkWritePermission(userId, projectId);
+
+    const schema = await this.schemasRepository.findOne({
+      where: { id: schemaId, projectId: projectId },
+    });
+
+    if (!schema) {
+      throw new NotFoundException('Schema not found');
+    }
+
+    await this.schemasRepository.delete({ id: schemaId });
+
+    const currentVersionPrefix = `projects/${projectId}/schemas/${schemaId}/latest`;
+    const diagramS3Key = `${currentVersionPrefix}/diagram.schema.json`;
+    const modelS3Key = `${currentVersionPrefix}/model.schema.json`;
+
+    await Promise.allSettled([
+      this.s3Service.deleteFile(diagramS3Key),
+      this.s3Service.deleteFile(modelS3Key),
+    ]);
+
+    logger.log(`Deleted schema files in S3 at ${currentVersionPrefix}`);
+
+    return { message: 'Schema deleted successfully' };
+  }
+
+  async renameSchema(
+    userId: string,
+    projectId: string,
+    schemaId: string,
+    newName: string,
+  ) {
+    await this.checkWritePermission(userId, projectId);
+
+    const schema = await this.schemasRepository.findOne({
+      where: { id: schemaId, projectId: projectId },
+    });
+
+    if (!schema) {
+      throw new NotFoundException('Schema not found');
+    }
+
+    schema.name = newName;
+    await this.schemasRepository.save(schema);
 
     return {
       id: schema.id,

@@ -2,10 +2,12 @@ import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpException,
   InternalServerErrorException,
   Param,
+  Patch,
   Post,
   Query,
   Req,
@@ -41,11 +43,12 @@ import {
   NotFoundResponseDto,
   InternalServerErrorResponseDto,
 } from '@/common/dto/error-response.dto';
+import { UpdateSchemaDto } from './dto/updateSchema.dto';
 
 @ApiTags('projects')
 @Controller('projects')
 export class ProjectsController {
-  constructor(private readonly projectsService: ProjectsService) {}
+  constructor(private readonly projectsService: ProjectsService) { }
 
   @Post('')
   @UseGuards(JwtAuthGuard)
@@ -313,4 +316,168 @@ export class ProjectsController {
       throw new InternalServerErrorException('Internal server error');
     }
   }
+
+  @Get(':projectId/schemas/:schemaId')
+  @UseGuards(JwtAuthGuard)
+  @ApiCookieAuth()
+  @ApiOperation({
+    summary: 'Get a schema from a project',
+    description: 'Get a schema from a project',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - Invalid or missing token',
+    type: UnauthorizedResponseDto,
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - User does not have permission to get schemas',
+    type: ForbiddenResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Not Found - Schema not found',
+    type: NotFoundResponseDto,
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Internal Server Error',
+    type: InternalServerErrorResponseDto,
+  })
+  async getSchema(
+    @Req() req: AuthenticatedRequest,
+    @Param('projectId') projectId: string,
+    @Param('schemaId') schemaId: string,
+  ) {
+    try {
+      const userId = req.user.id;
+      const schema = await this.projectsService.getSchema(
+        userId,
+        projectId,
+        schemaId,
+      );
+      return schema;
+    } catch (error: unknown) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      if (error instanceof Error) {
+        throw new InternalServerErrorException(error.message);
+      }
+      throw new InternalServerErrorException('Internal server error');
+    }
+  }
+
+  @Delete(':projectId/schemas/:schemaId')
+  @UseGuards(JwtAuthGuard)
+  @ApiCookieAuth()
+  @ApiOperation({
+    summary: 'Delete a schema from a project',
+    description: 'Delete a schema from a project',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Schema deleted successfully',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - Invalid or missing token',
+    type: UnauthorizedResponseDto,
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - User does not have permission to delete schemas',
+    type: ForbiddenResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Not Found - Project or Schema not found',
+    type: NotFoundResponseDto,
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Internal Server Error',
+    type: InternalServerErrorResponseDto,
+  })
+  async deleteSchema(
+    @Req() req: AuthenticatedRequest,
+    @Param('projectId') projectId: string,
+    @Param('schemaId') schemaId: string,
+  ) {
+    try {
+      const userId = req.user.id;
+      const result = await this.projectsService.deleteSchema(
+        userId,
+        projectId,
+        schemaId,
+      );
+      return result;
+    } catch (error: unknown) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      if (error instanceof Error) {
+        throw new InternalServerErrorException(error.message);
+      }
+      throw new InternalServerErrorException('Internal server error');
+    }
+  }
+
+  @Patch(':projectId/schemas/:schemaId')
+  @UseGuards(JwtAuthGuard)
+  @ApiCookieAuth()
+  @ApiOperation({
+    summary: 'Update a schema in a project',
+    description: 'Update a schema in a project',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Schema updated successfully',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - Invalid or missing token',
+    type: UnauthorizedResponseDto,
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - User does not have permission to update schemas',
+    type: ForbiddenResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Not Found - Project or Schema not found',
+    type: NotFoundResponseDto,
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Internal Server Error',
+    type: InternalServerErrorResponseDto,
+  })
+  async updateSchema(
+    @Req() req: AuthenticatedRequest,
+    @Param('projectId') projectId: string,
+    @Param('schemaId') schemaId: string,
+    @Body() dto: UpdateSchemaDto
+  ) {
+    try {
+      const userId = req.user.id;
+      const result = await this.projectsService.renameSchema(
+        userId,
+        projectId,
+        schemaId,
+        dto.name
+      );
+      return result;
+    } catch (error: unknown) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      if (error instanceof Error) {
+        throw new InternalServerErrorException(error.message);
+      }
+      throw new InternalServerErrorException('Internal server error');
+    }
+  }
+
 }

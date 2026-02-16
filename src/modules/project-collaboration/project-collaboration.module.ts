@@ -3,6 +3,7 @@ import { ProjectCollaborationService } from './project-collaboration.service';
 import { JwtModule } from '@nestjs/jwt';
 import { RedisModule } from '@/redis/redis.module';
 import { ProjectsModule } from '../projects/projects.module';
+import { S3Module } from '../s3/s3.module';
 
 @Module({
   imports: [
@@ -11,8 +12,9 @@ import { ProjectsModule } from '../projects/projects.module';
     }),
     RedisModule,
     ProjectsModule,
+    S3Module,
   ],
   providers: [ProjectCollaborationService],
   exports: [ProjectCollaborationService],
 })
-export class ProjectCollaborationModule {}
+export class ProjectCollaborationModule { }
