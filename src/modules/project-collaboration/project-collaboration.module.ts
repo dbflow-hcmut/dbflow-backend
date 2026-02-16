@@ -17,4 +17,4 @@ import { S3Module } from '../s3/s3.module';
   providers: [ProjectCollaborationService],
   exports: [ProjectCollaborationService],
 })
-export class ProjectCollaborationModule { }
+export class ProjectCollaborationModule {}

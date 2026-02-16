@@ -32,7 +32,7 @@ export class ProjectsService {
     @InjectRepository(SchemaEntity)
     private readonly schemasRepository: Repository<SchemaEntity>,
     private readonly s3Service: S3Service,
-  ) { }
+  ) {}
 
   async createProject(userId: string, dto: CreateProjectDto) {
     const project = await this.projectsRepository.save({
@@ -294,7 +294,11 @@ export class ProjectsService {
       type: dto.type,
     });
 
-    await this.initializeSchemaTemplates(schema.projectId, schema.id, schema.name);
+    await this.initializeSchemaTemplates(
+      schema.projectId,
+      schema.id,
+      schema.name,
+    );
 
     return {
       id: schema.id,

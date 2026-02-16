@@ -48,7 +48,7 @@ import { UpdateSchemaDto } from './dto/updateSchema.dto';
 @ApiTags('projects')
 @Controller('projects')
 export class ProjectsController {
-  constructor(private readonly projectsService: ProjectsService) { }
+  constructor(private readonly projectsService: ProjectsService) {}
 
   @Post('')
   @UseGuards(JwtAuthGuard)
@@ -458,7 +458,7 @@ export class ProjectsController {
     @Req() req: AuthenticatedRequest,
     @Param('projectId') projectId: string,
     @Param('schemaId') schemaId: string,
-    @Body() dto: UpdateSchemaDto
+    @Body() dto: UpdateSchemaDto,
   ) {
     try {
       const userId = req.user.id;
@@ -466,7 +466,7 @@ export class ProjectsController {
         userId,
         projectId,
         schemaId,
-        dto.name
+        dto.name,
       );
       return result;
     } catch (error: unknown) {
@@ -479,5 +479,4 @@ export class ProjectsController {
       throw new InternalServerErrorException('Internal server error');
     }
   }
-
 }

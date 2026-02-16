@@ -36,7 +36,8 @@ function isJwtPayload(payload: unknown): payload is JwtPayload {
 
 @Injectable()
 export class ProjectCollaborationService
-  implements OnModuleInit, OnModuleDestroy {
+  implements OnModuleInit, OnModuleDestroy
+{
   private hocuspocus: Hocuspocus;
   private webSocketServer?: WebSocketServer;
   private emitDebouncers = new Map<string, NodeJS.Timeout>();
@@ -48,7 +49,7 @@ export class ProjectCollaborationService
     private readonly s3Service: S3Service,
     @Inject(forwardRef(() => ProjectsService))
     private readonly projectsService: ProjectsService,
-  ) { }
+  ) {}
 
   onModuleInit() {
     logger.log('Initializing Project Collaboration Service...');
@@ -228,7 +229,11 @@ export class ProjectCollaborationService
         const projectId = requestParameters?.get('projectId');
         const schemaId = documentName;
 
-        if (!projectId || !schemaId || schemaId.startsWith('project-presence-')) {
+        if (
+          !projectId ||
+          !schemaId ||
+          schemaId.startsWith('project-presence-')
+        ) {
           return;
         }
 
@@ -385,11 +390,7 @@ export class ProjectCollaborationService
     logger.log('Project Collaboration server stopped');
   }
 
-  private async trySyncToS3(
-    ydoc: Y.Doc,
-    projectId: string,
-    schemaId: string,
-  ) {
+  private async trySyncToS3(ydoc: Y.Doc, projectId: string, schemaId: string) {
     const redisKey = `diagram:${projectId}:${schemaId}`;
     const lastSyncKey = `lastSync:${redisKey}`;
     const lastSync = await this.redisClient.get(lastSyncKey);
