@@ -17,6 +17,7 @@ import { UserProjectPermission } from '@/common/enums/user-project-permission.en
 import { S3Service } from '../s3/s3.service';
 import * as crypto from 'crypto';
 import { SchemaType } from '@/common/enums/schema-type.enum';
+import { ProjectVisibility } from '@/common/enums/project-visibility.enum';
 
 const logger = new Logger('ProjectsService');
 
@@ -135,18 +136,16 @@ export class ProjectsService {
   async getProjectInformation(userId: string, projectId: string) {
     await this.checkViewPermission(userId, projectId);
 
-    const userProject = await this.userProjectsRepository.findOne({
-      where: { userId: userId, projectId: projectId },
-      relations: ['project', 'project.owner'],
+    const project = await this.projectsRepository.findOne({
+      where: { id: projectId },
+      relations: ['owner'],
     });
 
-    if (!userProject) {
-      throw new NotFoundException(
-        'User does not have permission to view this project',
-      );
+    if (!project) {
+      throw new NotFoundException('Project not found');
     }
 
-    return this.formatProjectResponse(userProject.project);
+    return this.formatProjectResponse(project);
   }
 
   private async initializeSchemaTemplates(
@@ -216,34 +215,79 @@ export class ProjectsService {
   }
 
   async checkViewPermission(userId: string, projectId: string): Promise<void> {
-    const userProject = await this.getUserProjectPermission(userId, projectId);
-
-    logger.log('userProject', userProject);
-
-    if (!userProject) {
-      throw new NotFoundException(
-        'User does not have permission to access this project',
-      );
-    }
-
-    const project = await this.projectsRepository.findOne({
+    const projectInfo = await this.projectsRepository.findOne({
       where: { id: projectId },
     });
 
-    if (!project) {
+    if (!projectInfo) {
       throw new NotFoundException('Project not found');
+    }
+
+    if (
+      projectInfo.visibility === ProjectVisibility.OwnerAndInvited
+    ) {
+      const userProject = await this.getUserProjectPermission(userId, projectId);
+
+      if (!userProject) {
+        throw new ForbiddenException(
+          'User does not have permission to access this project',
+        );
+      }
+
+      if (userProject.permission !== UserProjectPermission.Viewer
+        && userProject.permission !== UserProjectPermission.Editor
+      ) {
+        throw new ForbiddenException('User does not have permission to access this project');
+      }
+    }else{
+      if(projectInfo.visibility === ProjectVisibility.AnyoneCanView
+        || projectInfo.visibility === ProjectVisibility.AnyoneCanEdit
+      ){
+        return;
+      }
+
+      throw new ForbiddenException(
+        'User does not have permission to access this project',
+      );
     }
   }
 
   async checkWritePermission(userId: string, projectId: string): Promise<void> {
-    const userProject = await this.getUserProjectPermission(userId, projectId);
+    const projectInfo = await this.projectsRepository.findOne({
+      where: { id: projectId },
+    });
 
-    if (!userProject) {
-      throw new NotFoundException(
+    if (!projectInfo) {
+      throw new NotFoundException('Project not found');
+    }
+
+    if (
+      projectInfo.visibility === ProjectVisibility.OwnerAndInvited
+    ) {
+      const userProject = await this.getUserProjectPermission(userId, projectId);
+
+      if (!userProject) {
+        throw new ForbiddenException(
+          'User does not have permission to access this project',
+        );
+      }
+
+      if (userProject.permission !== UserProjectPermission.Editor) {
+        throw new ForbiddenException('User does not have permission to access this project');
+      }
+    }else{
+      if(projectInfo.visibility === ProjectVisibility.AnyoneCanEdit
+      ){
+        return;
+      }
+
+      throw new ForbiddenException(
         'User does not have permission to access this project',
       );
     }
+  }
 
+  async getProjectPermissions(userId: string, projectId: string) {
     const project = await this.projectsRepository.findOne({
       where: { id: projectId },
     });
@@ -252,9 +296,23 @@ export class ProjectsService {
       throw new NotFoundException('Project not found');
     }
 
-    if (userProject.permission !== UserProjectPermission.Editor) {
-      throw new ForbiddenException('Only editors can perform this action');
+    if(userId){
+      const userProject = await this.userProjectsRepository.findOne({
+        where: { userId: userId, projectId: projectId },
+      });
+
+      return userProject?.permission;
     }
+
+    if(project.visibility === ProjectVisibility.AnyoneCanView){
+      return UserProjectPermission.Viewer;
+    }
+
+    if(project.visibility === ProjectVisibility.AnyoneCanEdit){
+      return UserProjectPermission.Editor;
+    }
+
+    return null;
   }
 
   async getAllSchemas(userId: string, projectId: string) {

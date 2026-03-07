@@ -196,6 +196,57 @@ export class ProjectsController {
     }
   }
 
+  @Get(':projectId/permissions')
+  @UseGuards(JwtAuthGuard)
+  @ApiCookieAuth()
+  @ApiOperation({
+    summary: 'Get project permissions',
+    description: 'Get project permissions',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - Invalid or missing token',
+    type: UnauthorizedResponseDto,
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - User does not have access to this project',
+    type: ForbiddenResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Not Found - Project not found',
+    type: NotFoundResponseDto,
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Internal Server Error',
+    type: InternalServerErrorResponseDto,
+  })
+  async getProjectPermissions(
+    @Req() req: AuthenticatedRequest,
+    @Param('projectId') projectId: string,
+  ) {
+    try {
+      console.log(req.user);
+      const userId = req.user.id;
+      console.log(userId);
+      const permissions = await this.projectsService.getProjectPermissions(
+        userId || '',
+        projectId,
+      );
+      return permissions;
+    } catch (error: unknown) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      if (error instanceof Error) {
+        throw new InternalServerErrorException(error.message);
+      }
+      throw new InternalServerErrorException('Internal server error');
+    }
+  }
+
   @Post(':projectId/schemas')
   @UseGuards(JwtAuthGuard)
   @ApiCookieAuth()
