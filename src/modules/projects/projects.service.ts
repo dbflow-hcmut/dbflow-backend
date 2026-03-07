@@ -223,10 +223,11 @@ export class ProjectsService {
       throw new NotFoundException('Project not found');
     }
 
-    if (
-      projectInfo.visibility === ProjectVisibility.OwnerAndInvited
-    ) {
-      const userProject = await this.getUserProjectPermission(userId, projectId);
+    if (projectInfo.visibility === ProjectVisibility.OwnerAndInvited) {
+      const userProject = await this.getUserProjectPermission(
+        userId,
+        projectId,
+      );
 
       if (!userProject) {
         throw new ForbiddenException(
@@ -234,15 +235,19 @@ export class ProjectsService {
         );
       }
 
-      if (userProject.permission !== UserProjectPermission.Viewer
-        && userProject.permission !== UserProjectPermission.Editor
+      if (
+        userProject.permission !== UserProjectPermission.Viewer &&
+        userProject.permission !== UserProjectPermission.Editor
       ) {
-        throw new ForbiddenException('User does not have permission to access this project');
+        throw new ForbiddenException(
+          'User does not have permission to access this project',
+        );
       }
-    }else{
-      if(projectInfo.visibility === ProjectVisibility.AnyoneCanView
-        || projectInfo.visibility === ProjectVisibility.AnyoneCanEdit
-      ){
+    } else {
+      if (
+        projectInfo.visibility === ProjectVisibility.AnyoneCanView ||
+        projectInfo.visibility === ProjectVisibility.AnyoneCanEdit
+      ) {
         return;
       }
 
@@ -261,10 +266,11 @@ export class ProjectsService {
       throw new NotFoundException('Project not found');
     }
 
-    if (
-      projectInfo.visibility === ProjectVisibility.OwnerAndInvited
-    ) {
-      const userProject = await this.getUserProjectPermission(userId, projectId);
+    if (projectInfo.visibility === ProjectVisibility.OwnerAndInvited) {
+      const userProject = await this.getUserProjectPermission(
+        userId,
+        projectId,
+      );
 
       if (!userProject) {
         throw new ForbiddenException(
@@ -273,11 +279,12 @@ export class ProjectsService {
       }
 
       if (userProject.permission !== UserProjectPermission.Editor) {
-        throw new ForbiddenException('User does not have permission to access this project');
+        throw new ForbiddenException(
+          'User does not have permission to access this project',
+        );
       }
-    }else{
-      if(projectInfo.visibility === ProjectVisibility.AnyoneCanEdit
-      ){
+    } else {
+      if (projectInfo.visibility === ProjectVisibility.AnyoneCanEdit) {
         return;
       }
 
@@ -296,7 +303,7 @@ export class ProjectsService {
       throw new NotFoundException('Project not found');
     }
 
-    if(userId){
+    if (userId) {
       const userProject = await this.userProjectsRepository.findOne({
         where: { userId: userId, projectId: projectId },
       });
@@ -304,11 +311,11 @@ export class ProjectsService {
       return userProject?.permission;
     }
 
-    if(project.visibility === ProjectVisibility.AnyoneCanView){
+    if (project.visibility === ProjectVisibility.AnyoneCanView) {
       return UserProjectPermission.Viewer;
     }
 
-    if(project.visibility === ProjectVisibility.AnyoneCanEdit){
+    if (project.visibility === ProjectVisibility.AnyoneCanEdit) {
       return UserProjectPermission.Editor;
     }
 
