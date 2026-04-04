@@ -14,7 +14,7 @@ import { UserProjectPermission } from '@/common/enums/user-project-permission.en
 import { InviteStatus } from '@/common/enums/invite-status.enum';
 
 @Entity('project_invitations')
-@Index(['projectId', 'invitedUserId', 'status'], { unique: true })
+@Index(['projectId', 'email', 'status'], { unique: true })
 export class ProjectInvitationEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -22,8 +22,11 @@ export class ProjectInvitationEntity {
   @Column({ name: 'project_id', type: 'uuid', nullable: false })
   projectId: string;
 
-  @Column({ name: 'invited_user_id', type: 'uuid', nullable: false })
-  invitedUserId: string;
+  @Column({ name: 'email', type: 'varchar', nullable: false })
+  email: string;
+
+  @Column({ name: 'invited_user_id', type: 'uuid', nullable: true })
+  invitedUserId: string | null;
 
   @Column({ name: 'inviter_user_id', type: 'uuid', nullable: false })
   inviterUserId: string;

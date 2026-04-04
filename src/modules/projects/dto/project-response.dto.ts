@@ -1,7 +1,8 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ProjectVisibility } from '@/common/enums/project-visibility.enum';
 import { MetaResponseDto } from '@/common/dto/success-response.dto';
 import { UserProjectPermission } from '@/common/enums/user-project-permission.enum';
+import { InviteStatus } from '@/common/enums/invite-status.enum';
 
 export class ProjectResponseDto {
   @ApiProperty({ example: '22fa572f-27d2-402b-8098-b4c9885f6815' })
@@ -120,4 +121,50 @@ export class GetAllProjectsSuccessResponseDto {
 
   @ApiProperty({ type: GetAllProjectsDataDto })
   data: GetAllProjectsDataDto;
+}
+
+export class ProjectMemberItemDto {
+  @ApiProperty({ example: 'ddddcbbd-6d3c-4990-b7d0-dc70b16b11b1' })
+  userId: string;
+
+  @ApiProperty({ example: 'John Doe' })
+  fullName: string;
+
+  @ApiProperty({ example: 'john@example.com' })
+  email: string;
+
+  @ApiProperty({
+    example:
+      'https://www.gravatar.com/avatar/8c9a15b0f0e6c588d08e8e5f8f5e5e5e?s=200&d=identicon&r=g',
+  })
+  avatar: string;
+
+  @ApiProperty({ example: 'editor' })
+  permission: string;
+
+  @ApiProperty({ example: true })
+  isVerified: boolean;
+
+  @ApiPropertyOptional({
+    enum: UserProjectPermission,
+    example: UserProjectPermission.Viewer,
+  })
+  invitePermission?: UserProjectPermission | null;
+
+  @ApiPropertyOptional({
+    enum: InviteStatus,
+    example: InviteStatus.Pending,
+  })
+  inviteStatus?: InviteStatus | null;
+}
+
+export class AllProjectPermissionsResponseDto {
+  @ApiProperty({
+    enum: ProjectVisibility,
+    example: ProjectVisibility.OwnerAndInvited,
+  })
+  project_mode: ProjectVisibility;
+
+  @ApiProperty({ type: [ProjectMemberItemDto] })
+  list_users: ProjectMemberItemDto[];
 }

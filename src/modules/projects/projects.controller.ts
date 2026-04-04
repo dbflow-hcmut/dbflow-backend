@@ -31,6 +31,7 @@ import {
   CreateProjectSuccessResponseDto,
   GetAllProjectsSuccessResponseDto,
   GetProjectSuccessResponseDto,
+  AllProjectPermissionsResponseDto,
 } from './dto/project-response.dto';
 import {
   CreateSchemaSuccessResponseDto,
@@ -44,6 +45,9 @@ import {
   InternalServerErrorResponseDto,
 } from '@/common/dto/error-response.dto';
 import { UpdateSchemaDto } from './dto/updateSchema.dto';
+import { UpdateProjectVisibilityDto } from './dto/updateProjectVisibility.dto';
+import { UpdateUserPermissionDto } from './dto/updateUserPermission.dto';
+import { InviteUsersDto } from './dto/inviteUsers.dto';
 
 @ApiTags('projects')
 @Controller('projects')
@@ -200,6 +204,60 @@ export class ProjectsController {
   @UseGuards(JwtAuthGuard)
   @ApiCookieAuth()
   @ApiOperation({
+    summary: 'Get all project permissions',
+    description:
+      'Get all users, their permissions, and pending invitations for a project',
+  })
+  @ApiOkResponse({
+    description: 'All project permissions retrieved successfully',
+    type: AllProjectPermissionsResponseDto,
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - Invalid or missing token',
+    type: UnauthorizedResponseDto,
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - User does not have access to this project',
+    type: ForbiddenResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Not Found - Project not found',
+    type: NotFoundResponseDto,
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Internal Server Error',
+    type: InternalServerErrorResponseDto,
+  })
+  async getAllProjectPermissions(
+    @Req() req: AuthenticatedRequest,
+    @Param('projectId') projectId: string,
+  ) {
+    try {
+      const userId = req.user.id;
+      const permissions = await this.projectsService.getAllProjectPermissions(
+        userId,
+        projectId,
+      );
+      return permissions;
+    } catch (error: unknown) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      if (error instanceof Error) {
+        throw new InternalServerErrorException(error.message);
+      }
+      throw new InternalServerErrorException('Internal server error');
+    }
+  }
+
+  @Get(':projectId/me/permissions')
+  @UseGuards(JwtAuthGuard)
+  @ApiCookieAuth()
+  @ApiOperation({
     summary: 'Get project permissions',
     description: 'Get project permissions',
   })
@@ -228,9 +286,7 @@ export class ProjectsController {
     @Param('projectId') projectId: string,
   ) {
     try {
-      console.log(req.user);
       const userId = req.user.id;
-      console.log(userId);
       const permissions = await this.projectsService.getProjectPermissions(
         userId || '',
         projectId,
@@ -243,6 +299,206 @@ export class ProjectsController {
       if (error instanceof Error) {
         throw new InternalServerErrorException(error.message);
       }
+      throw new InternalServerErrorException('Internal server error');
+    }
+  }
+
+  @Patch(':projectId/visibility')
+  @UseGuards(JwtAuthGuard)
+  @ApiCookieAuth()
+  @ApiOperation({
+    summary: 'Update project visibility',
+    description:
+      'Change the project visibility mode. Only the project owner can perform this action.',
+  })
+  @ApiBody({ type: UpdateProjectVisibilityDto })
+  @ApiResponse({ status: 200, description: 'Visibility updated successfully' })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized',
+    type: UnauthorizedResponseDto,
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - Not the project owner',
+    type: ForbiddenResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Project not found',
+    type: NotFoundResponseDto,
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Internal Server Error',
+    type: InternalServerErrorResponseDto,
+  })
+  async updateProjectVisibility(
+    @Req() req: AuthenticatedRequest,
+    @Param('projectId') projectId: string,
+    @Body() dto: UpdateProjectVisibilityDto,
+  ) {
+    try {
+      const userId = req.user.id;
+      return await this.projectsService.updateProjectVisibility(
+        userId,
+        projectId,
+        dto.projectMode,
+      );
+    } catch (error: unknown) {
+      if (error instanceof HttpException) throw error;
+      if (error instanceof Error)
+        throw new InternalServerErrorException(error.message);
+      throw new InternalServerErrorException('Internal server error');
+    }
+  }
+
+  @Patch(':projectId/permissions/:targetUserId')
+  @UseGuards(JwtAuthGuard)
+  @ApiCookieAuth()
+  @ApiOperation({
+    summary: "Update a user's permission",
+    description:
+      "Change a user's permission in the project. Only the project owner can perform this action.",
+  })
+  @ApiBody({ type: UpdateUserPermissionDto })
+  @ApiResponse({
+    status: 200,
+    description: 'User permission updated successfully',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized',
+    type: UnauthorizedResponseDto,
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden',
+    type: ForbiddenResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Not Found',
+    type: NotFoundResponseDto,
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Internal Server Error',
+    type: InternalServerErrorResponseDto,
+  })
+  async updateUserPermission(
+    @Req() req: AuthenticatedRequest,
+    @Param('projectId') projectId: string,
+    @Param('targetUserId') targetUserId: string,
+    @Body() dto: UpdateUserPermissionDto,
+  ) {
+    try {
+      const userId = req.user.id;
+      return await this.projectsService.updateUserPermission(
+        userId,
+        projectId,
+        targetUserId,
+        dto.permission,
+      );
+    } catch (error: unknown) {
+      if (error instanceof HttpException) throw error;
+      if (error instanceof Error)
+        throw new InternalServerErrorException(error.message);
+      throw new InternalServerErrorException('Internal server error');
+    }
+  }
+
+  @Delete(':projectId/permissions/:email')
+  @UseGuards(JwtAuthGuard)
+  @ApiCookieAuth()
+  @ApiOperation({
+    summary: "Remove a user's access",
+    description:
+      'Remove a user from the project by email. Only the project owner can perform this action. Works for both registered users and pending invitations.',
+  })
+  @ApiResponse({ status: 200, description: 'User access removed successfully' })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized',
+    type: UnauthorizedResponseDto,
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden',
+    type: ForbiddenResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Not Found',
+    type: NotFoundResponseDto,
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Internal Server Error',
+    type: InternalServerErrorResponseDto,
+  })
+  async removeUserAccess(
+    @Req() req: AuthenticatedRequest,
+    @Param('projectId') projectId: string,
+    @Param('email') email: string,
+  ) {
+    try {
+      const userId = req.user.id;
+      return await this.projectsService.removeUserAccess(
+        userId,
+        projectId,
+        email,
+      );
+    } catch (error: unknown) {
+      if (error instanceof HttpException) throw error;
+      if (error instanceof Error)
+        throw new InternalServerErrorException(error.message);
+      throw new InternalServerErrorException('Internal server error');
+    }
+  }
+
+  @Post(':projectId/invitations')
+  @UseGuards(JwtAuthGuard)
+  @ApiCookieAuth()
+  @ApiOperation({
+    summary: 'Invite users to the project',
+    description:
+      'Invite users by email to the project. Optionally sends invitation emails via Gmail. Only the project owner can perform this action.',
+  })
+  @ApiBody({ type: InviteUsersDto })
+  @ApiResponse({ status: 201, description: 'Invitations sent successfully' })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized',
+    type: UnauthorizedResponseDto,
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden',
+    type: ForbiddenResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Not Found',
+    type: NotFoundResponseDto,
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Internal Server Error',
+    type: InternalServerErrorResponseDto,
+  })
+  async inviteUsers(
+    @Req() req: AuthenticatedRequest,
+    @Param('projectId') projectId: string,
+    @Body() dto: InviteUsersDto,
+  ) {
+    try {
+      const userId = req.user.id;
+      return await this.projectsService.inviteUsers(userId, projectId, dto);
+    } catch (error: unknown) {
+      if (error instanceof HttpException) throw error;
+      if (error instanceof Error)
+        throw new InternalServerErrorException(error.message);
       throw new InternalServerErrorException('Internal server error');
     }
   }
@@ -527,6 +783,37 @@ export class ProjectsController {
       if (error instanceof Error) {
         throw new InternalServerErrorException(error.message);
       }
+      throw new InternalServerErrorException('Internal server error');
+    }
+  }
+
+  @Post('invitations/accept')
+  @UseGuards(JwtAuthGuard)
+  @ApiCookieAuth()
+  @ApiOperation({
+    summary: 'Accept a project invitation',
+    description: 'Accept a project invitation using a token',
+  })
+  @ApiBody({
+    schema: { type: 'object', properties: { token: { type: 'string' } } },
+  })
+  @ApiResponse({ status: 200, description: 'Invitation accepted' })
+  @ApiResponse({ status: 400, description: 'Bad Request' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden' })
+  @ApiResponse({ status: 404, description: 'Not Found' })
+  @ApiResponse({ status: 500, description: 'Internal Server Error' })
+  async acceptInvitation(
+    @Req() req: AuthenticatedRequest,
+    @Body('token') token: string,
+  ) {
+    try {
+      const userId = req.user.id;
+      return await this.projectsService.acceptInvitation(userId, token);
+    } catch (error: unknown) {
+      if (error instanceof HttpException) throw error;
+      if (error instanceof Error)
+        throw new InternalServerErrorException(error.message);
       throw new InternalServerErrorException('Internal server error');
     }
   }

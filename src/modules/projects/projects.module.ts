@@ -7,6 +7,8 @@ import { SchemaEntity } from './entity/schema.entity';
 import { UserProjectEntity } from './entity/user-project.entity';
 import { ProjectInvitationEntity } from './entity/project-invitation.entity';
 import { S3Module } from '../s3/s3.module';
+import { UsersModule } from '../users/users.module';
+import { MailModule } from '../mail/mail.module';
 
 @Module({
   imports: [
@@ -17,6 +19,8 @@ import { S3Module } from '../s3/s3.module';
       ProjectInvitationEntity,
     ]),
     S3Module,
+    UsersModule,
+    MailModule,
   ],
   controllers: [ProjectsController],
   providers: [ProjectsService],

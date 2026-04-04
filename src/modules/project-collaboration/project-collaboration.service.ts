@@ -87,27 +87,39 @@ export class ProjectCollaborationService
             `Checking permission for user ${userId} on project ${projectId}`,
           );
 
-          const userProject = await projectsService.getUserProjectPermission(
+          const permissionData = await projectsService.getProjectPermissions(
             payload.sub,
             projectId,
           );
 
-          if (!userProject) {
+          if (!permissionData || !permissionData.permission) {
             throw new UnauthorizedException(
               'You do not have permission to access this document',
             );
           }
 
+          // Auto-add user to members if accessing public project
+          // This ensures users accessing via socket are also added to members
+          try {
+            await projectsService.getProjectInformation(
+              payload.sub,
+              projectId,
+            );
+          } catch (error) {
+            // Ignore errors from getProjectInformation since we already checked permissions
+            logger.warn('Could not auto-add user to project members:', error);
+          }
+
           logger.log(
             `User permission for project ${projectId}:`,
-            userProject.permission,
+            permissionData.permission,
           );
 
           return {
             user: {
               id: userId,
               email: payload.email,
-              permission: userProject.permission,
+              permission: permissionData.permission,
             },
           };
         } catch (error) {

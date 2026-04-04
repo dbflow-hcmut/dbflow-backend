@@ -3,10 +3,12 @@ import {
   Logger,
   NotFoundException,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import { CreateProjectDto } from './dto/createProject.dto';
 import { GetProjectDto } from './dto/getProject.dto';
 import { CreateSchemaDto } from './dto/createSchema.dto';
+import { InviteUsersDto } from './dto/inviteUsers.dto';
 import { Repository } from 'typeorm';
 import { ProjectEntity } from './entity/project.entity';
 import { SchemaEntity } from './entity/schema.entity';
@@ -14,7 +16,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { UserProjectEntity } from './entity/user-project.entity';
 import { ProjectInvitationEntity } from './entity/project-invitation.entity';
 import { UserProjectPermission } from '@/common/enums/user-project-permission.enum';
+import { InviteStatus } from '@/common/enums/invite-status.enum';
 import { S3Service } from '../s3/s3.service';
+import { UsersService } from '../users/users.service';
+import { MailService } from '../mail/mail.service';
 import * as crypto from 'crypto';
 import { SchemaType } from '@/common/enums/schema-type.enum';
 import { ProjectVisibility } from '@/common/enums/project-visibility.enum';
@@ -33,6 +38,8 @@ export class ProjectsService {
     @InjectRepository(SchemaEntity)
     private readonly schemasRepository: Repository<SchemaEntity>,
     private readonly s3Service: S3Service,
+    private readonly usersService: UsersService,
+    private readonly mailService: MailService,
   ) {}
 
   async createProject(userId: string, dto: CreateProjectDto) {
@@ -145,7 +152,51 @@ export class ProjectsService {
       throw new NotFoundException('Project not found');
     }
 
+    // Auto-add user to members if accessing public project
+    if (userId && userId !== project.ownerId) {
+      await this.ensureUserMembership(userId, projectId, project.visibility);
+    }
+
     return this.formatProjectResponse(project);
+  }
+
+  private async ensureUserMembership(
+    userId: string,
+    projectId: string,
+    visibility: ProjectVisibility,
+  ): Promise<void> {
+    // Only auto-add for public projects
+    if (
+      visibility !== ProjectVisibility.AnyoneCanView &&
+      visibility !== ProjectVisibility.AnyoneCanEdit
+    ) {
+      return;
+    }
+
+    // Check if user is already a member
+    const existingMember = await this.userProjectsRepository.findOne({
+      where: { userId, projectId },
+    });
+
+    if (existingMember) {
+      return; // User already has membership
+    }
+
+    // Add user with appropriate permission based on project visibility
+    const permission =
+      visibility === ProjectVisibility.AnyoneCanEdit
+        ? UserProjectPermission.Editor
+        : UserProjectPermission.Viewer;
+
+    await this.userProjectsRepository.save({
+      userId,
+      projectId,
+      permission,
+    });
+
+    logger.log(
+      `Auto-added user ${userId} to public project ${projectId} with ${permission} permission`,
+    );
   }
 
   private async initializeSchemaTemplates(
@@ -223,6 +274,15 @@ export class ProjectsService {
       throw new NotFoundException('Project not found');
     }
 
+    // Allow public projects
+    if (
+      projectInfo.visibility === ProjectVisibility.AnyoneCanView ||
+      projectInfo.visibility === ProjectVisibility.AnyoneCanEdit
+    ) {
+      return;
+    }
+
+    // For private projects (OwnerAndInvited)
     if (projectInfo.visibility === ProjectVisibility.OwnerAndInvited) {
       const userProject = await this.getUserProjectPermission(
         userId,
@@ -243,18 +303,12 @@ export class ProjectsService {
           'User does not have permission to access this project',
         );
       }
-    } else {
-      if (
-        projectInfo.visibility === ProjectVisibility.AnyoneCanView ||
-        projectInfo.visibility === ProjectVisibility.AnyoneCanEdit
-      ) {
-        return;
-      }
-
-      throw new ForbiddenException(
-        'User does not have permission to access this project',
-      );
+      return;
     }
+
+    throw new ForbiddenException(
+      'User does not have permission to access this project',
+    );
   }
 
   async checkWritePermission(userId: string, projectId: string): Promise<void> {
@@ -266,32 +320,37 @@ export class ProjectsService {
       throw new NotFoundException('Project not found');
     }
 
-    if (projectInfo.visibility === ProjectVisibility.OwnerAndInvited) {
-      const userProject = await this.getUserProjectPermission(
-        userId,
-        projectId,
-      );
+    // Check if user is owner
+    if (userId === projectInfo.ownerId) {
+      return;
+    }
 
-      if (!userProject) {
-        throw new ForbiddenException(
-          'User does not have permission to access this project',
-        );
-      }
+    // Check user's explicit permission in user_projects table
+    const userProject = await this.getUserProjectPermission(
+      userId,
+      projectId,
+    );
 
-      if (userProject.permission !== UserProjectPermission.Editor) {
-        throw new ForbiddenException(
-          'User does not have permission to access this project',
-        );
-      }
-    } else {
-      if (projectInfo.visibility === ProjectVisibility.AnyoneCanEdit) {
+    if (userProject) {
+      // User has explicit permission - must be Editor or owner
+      if (userProject.permission === UserProjectPermission.Editor) {
         return;
       }
-
+      // User is Viewer or other - no write permission
       throw new ForbiddenException(
-        'User does not have permission to access this project',
+        'You do not have write permission for this project',
       );
     }
+
+    // No explicit permission - check project visibility
+    if (projectInfo.visibility === ProjectVisibility.AnyoneCanEdit) {
+      return;
+    }
+
+    // Project is private or view-only
+    throw new ForbiddenException(
+      'You do not have write permission for this project',
+    );
   }
 
   async getProjectPermissions(userId: string, projectId: string) {
@@ -303,27 +362,163 @@ export class ProjectsService {
       throw new NotFoundException('Project not found');
     }
 
+    // Check if the user is the owner first
+    if (userId && userId === project.ownerId) {
+      return { permission: 'owner' };
+    }
+
     if (userId) {
       const userProject = await this.userProjectsRepository.findOne({
         where: { userId: userId, projectId: projectId },
       });
 
-      return userProject?.permission;
+      if (userProject) {
+        return { permission: userProject.permission };
+      }
+
+      // Check if user has a pending invitation
+      const user = await this.usersService.findById(userId);
+      
+      if (user) {
+        const invitation = await this.projectInvitationsRepository.findOne({
+          where: {
+            email: user.email,
+            projectId: projectId,
+            status: InviteStatus.Pending,
+          },
+        });
+
+        if (invitation) {
+          return {
+            permission: 'invited',
+            invitationId: invitation.id,
+            invitePermission: invitation.permission,
+          };
+        }
+      }
     }
 
+    // Check public visibility
     if (project.visibility === ProjectVisibility.AnyoneCanView) {
-      return UserProjectPermission.Viewer;
+      return { permission: UserProjectPermission.Viewer };
     }
 
     if (project.visibility === ProjectVisibility.AnyoneCanEdit) {
-      return UserProjectPermission.Editor;
+      return { permission: UserProjectPermission.Editor };
     }
 
     return null;
   }
 
+  async getAllProjectPermissions(userId: string, projectId: string) {
+    await this.checkViewPermission(userId, projectId);
+
+    const project = await this.projectsRepository.findOne({
+      where: { id: projectId },
+      relations: ['owner'],
+    });
+
+    if (!project) {
+      throw new NotFoundException('Project not found');
+    }
+
+    // Auto-add user to members if accessing public project
+    if (userId && userId !== project.ownerId) {
+      await this.ensureUserMembership(userId, projectId, project.visibility);
+    }
+
+    // Get all members with user info
+    const userProjects = await this.userProjectsRepository.find({
+      where: { projectId },
+      relations: ['user'],
+    });
+
+    // Get all invitations with invited user info
+    const invitations = await this.projectInvitationsRepository.find({
+      where: { projectId },
+      relations: ['invitedUser'],
+    });
+
+    const listUsers: Array<{
+      userId: string;
+      fullName: string;
+      email: string;
+      avatar: string;
+      permission: string;
+      isVerified: boolean;
+      invitePermission: string | null;
+      inviteStatus: string | null;
+      invitationId: string | null;
+    }> = [];
+
+    // Add owner first
+    const ownerEmailHash = this.generateEmailHash(project.owner.email);
+    const ownerAvatar = `https://www.gravatar.com/avatar/${ownerEmailHash}?s=200&d=identicon&r=g`;
+    listUsers.push({
+      userId: project.owner.id,
+      fullName: project.owner.fullName,
+      email: project.owner.email,
+      avatar: ownerAvatar,
+      permission: 'owner',
+      isVerified: true,
+      invitePermission: null,
+      inviteStatus: null,
+      invitationId: null,
+    });
+
+    // Add members (excluding owner to avoid duplicates)
+    for (const up of userProjects) {
+      if (up.userId === project.ownerId) continue;
+      const emailHash = this.generateEmailHash(up.user.email);
+      const avatar = `https://www.gravatar.com/avatar/${emailHash}?s=200&d=identicon&r=g`;
+      listUsers.push({
+        userId: up.user.id,
+        fullName: up.user.fullName,
+        email: up.user.email,
+        avatar,
+        permission: up.permission,
+        isVerified: true,
+        invitePermission: null,
+        inviteStatus: null,
+        invitationId: null,
+      });
+    }
+
+    // Add invited users (pending/rejected, not yet accepted members)
+    const memberUserIds = new Set(userProjects.map((up) => up.userId));
+    for (const inv of invitations) {
+      if (inv.invitedUserId && memberUserIds.has(inv.invitedUserId)) continue;
+      const emailHash = this.generateEmailHash(inv.email);
+      const avatar = `https://www.gravatar.com/avatar/${emailHash}?s=200&d=identicon&r=g`;
+      listUsers.push({
+        userId: inv.invitedUserId || inv.id,
+        fullName: inv.invitedUser?.fullName || inv.email,
+        email: inv.email,
+        avatar,
+        permission: 'invited',
+        isVerified: false,
+        invitePermission: inv.permission,
+        inviteStatus: inv.status,
+        invitationId: inv.id,
+      });
+    }
+
+    return {
+      project_mode: project.visibility,
+      list_users: listUsers,
+    };
+  }
+
   async getAllSchemas(userId: string, projectId: string) {
     await this.checkViewPermission(userId, projectId);
+
+    // Auto-add user to members if accessing public project
+    const project = await this.projectsRepository.findOne({
+      where: { id: projectId },
+    });
+    if (project && userId && userId !== project.ownerId) {
+      await this.ensureUserMembership(userId, projectId, project.visibility);
+    }
 
     const schemas = await this.schemasRepository.find({
       where: { projectId: projectId },
@@ -353,6 +548,11 @@ export class ProjectsService {
       throw new NotFoundException('Project not found');
     }
 
+    // Auto-add user to members if accessing public project
+    if (userId && userId !== project.ownerId) {
+      await this.ensureUserMembership(userId, projectId, project.visibility);
+    }
+
     const schema = await this.schemasRepository.save({
       projectId: projectId,
       name: dto.name,
@@ -378,6 +578,14 @@ export class ProjectsService {
   async getSchema(userId: string, projectId: string, schemaId: string) {
     await this.checkViewPermission(userId, projectId);
 
+    // Auto-add user to members if accessing public project
+    const project = await this.projectsRepository.findOne({
+      where: { id: projectId },
+    });
+    if (project && userId && userId !== project.ownerId) {
+      await this.ensureUserMembership(userId, projectId, project.visibility);
+    }
+
     const schema = await this.schemasRepository.findOne({
       where: { id: schemaId, projectId: projectId },
     });
@@ -398,6 +606,14 @@ export class ProjectsService {
 
   async deleteSchema(userId: string, projectId: string, schemaId: string) {
     await this.checkWritePermission(userId, projectId);
+
+    // Auto-add user to members if accessing public project
+    const project = await this.projectsRepository.findOne({
+      where: { id: projectId },
+    });
+    if (project && userId && userId !== project.ownerId) {
+      await this.ensureUserMembership(userId, projectId, project.visibility);
+    }
 
     const schema = await this.schemasRepository.findOne({
       where: { id: schemaId, projectId: projectId },
@@ -431,6 +647,14 @@ export class ProjectsService {
   ) {
     await this.checkWritePermission(userId, projectId);
 
+    // Auto-add user to members if accessing public project
+    const project = await this.projectsRepository.findOne({
+      where: { id: projectId },
+    });
+    if (project && userId && userId !== project.ownerId) {
+      await this.ensureUserMembership(userId, projectId, project.visibility);
+    }
+
     const schema = await this.schemasRepository.findOne({
       where: { id: schemaId, projectId: projectId },
     });
@@ -449,6 +673,241 @@ export class ProjectsService {
       type: schema.type,
       createdAt: schema.createdAt,
       updatedAt: schema.updatedAt,
+    };
+  }
+
+  private async checkOwnership(
+    userId: string,
+    projectId: string,
+  ): Promise<ProjectEntity> {
+    const project = await this.projectsRepository.findOne({
+      where: { id: projectId },
+      relations: ['owner'],
+    });
+
+    if (!project) {
+      throw new NotFoundException('Project not found');
+    }
+
+    if (project.ownerId !== userId) {
+      throw new ForbiddenException(
+        'Only the project owner can perform this action',
+      );
+    }
+
+    return project;
+  }
+
+  async updateProjectVisibility(
+    userId: string,
+    projectId: string,
+    visibility: ProjectVisibility,
+  ) {
+    await this.checkOwnership(userId, projectId);
+
+    await this.projectsRepository.update(projectId, {
+      visibility,
+    });
+
+    return { message: 'Project visibility updated successfully' };
+  }
+
+  async updateUserPermission(
+    userId: string,
+    projectId: string,
+    targetUserId: string,
+    permission: UserProjectPermission,
+  ) {
+    const project = await this.checkOwnership(userId, projectId);
+
+    if (targetUserId === project.ownerId) {
+      throw new ForbiddenException("Cannot change the owner's permission");
+    }
+
+    const userProject = await this.userProjectsRepository.findOne({
+      where: { userId: targetUserId, projectId },
+    });
+
+    if (!userProject) {
+      throw new NotFoundException('User is not a member of this project');
+    }
+
+    userProject.permission = permission;
+    await this.userProjectsRepository.save(userProject);
+
+    return { message: 'User permission updated successfully' };
+  }
+
+  async removeUserAccess(
+    userId: string,
+    projectId: string,
+    email: string,
+  ) {
+    const project = await this.checkOwnership(userId, projectId);
+
+    // Decode email in case it's URL encoded
+    const decodedEmail = decodeURIComponent(email);
+
+    // Check if trying to remove owner
+    if (project.owner.email === decodedEmail) {
+      throw new ForbiddenException('Cannot remove the owner from the project');
+    }
+
+    // Find user by email (if exists)
+    const targetUser = await this.usersService.findByEmail(decodedEmail);
+
+    // Remove from user_projects if user exists and is a member
+    if (targetUser) {
+      await this.userProjectsRepository.delete({
+        userId: targetUser.id,
+        projectId,
+      });
+    }
+
+    // Also remove any pending invitations by email
+    await this.projectInvitationsRepository.delete({
+      email: decodedEmail,
+      projectId,
+    });
+
+    return { message: 'User access removed successfully' };
+  }
+
+  async inviteUsers(userId: string, projectId: string, dto: InviteUsersDto) {
+    const project = await this.checkOwnership(userId, projectId);
+    const inviter = await this.usersService.findById(userId);
+
+    if (!inviter) {
+      throw new NotFoundException('Inviter user not found');
+    }
+
+    const results: Array<{ email: string; status: string }> = [];
+
+    for (const inviteItem of dto.users) {
+      const targetUser = await this.usersService.findByEmail(inviteItem.email);
+
+      if (targetUser && targetUser.id === project.ownerId) {
+        results.push({ email: inviteItem.email, status: 'is_owner' });
+        continue;
+      }
+
+      if (targetUser) {
+        // Check if already a member
+        const existingMember = await this.userProjectsRepository.findOne({
+          where: { userId: targetUser.id, projectId },
+        });
+
+        if (existingMember) {
+          results.push({ email: inviteItem.email, status: 'already_member' });
+          continue;
+        }
+      }
+
+      // Check if already invited (pending)
+      const existingInvitation =
+        await this.projectInvitationsRepository.findOne({
+          where: {
+            email: inviteItem.email,
+            projectId,
+            status: InviteStatus.Pending,
+          },
+        });
+
+      let invitationId: string;
+
+      if (existingInvitation) {
+        // Update the permission if different
+        existingInvitation.permission = inviteItem.invite_permission;
+        if (targetUser && !existingInvitation.invitedUserId) {
+          existingInvitation.invitedUserId = targetUser.id;
+        }
+        const saved =
+          await this.projectInvitationsRepository.save(existingInvitation);
+        invitationId = saved.id;
+        results.push({ email: inviteItem.email, status: 'updated_invitation' });
+      } else {
+        // Create new invitation
+        const saved = await this.projectInvitationsRepository.save({
+          projectId,
+          email: inviteItem.email,
+          invitedUserId: targetUser ? targetUser.id : null,
+          inviterUserId: userId,
+          permission: inviteItem.invite_permission,
+          status: InviteStatus.Pending,
+        });
+        invitationId = saved.id;
+        results.push({ email: inviteItem.email, status: 'invited' });
+      }
+
+      // Send email if requested
+      if (dto.sendEmail) {
+        await this.mailService.sendInvitationEmail(
+          inviteItem.email,
+          inviter.fullName,
+          project.name,
+          inviteItem.invite_permission,
+          invitationId,
+          dto.message,
+        );
+      }
+    }
+
+    return { message: 'Invitations processed', results };
+  }
+
+  async acceptInvitation(userId: string, token: string) {
+    const user = await this.usersService.findById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const invitation = await this.projectInvitationsRepository.findOne({
+      where: { id: token },
+    });
+
+    if (!invitation) {
+      throw new NotFoundException('Invitation not found or invalid');
+    }
+
+    if (invitation.email !== user.email) {
+      throw new ForbiddenException(
+        'This invitation is for a different email address',
+      );
+    }
+
+    if (invitation.status !== InviteStatus.Pending) {
+      throw new BadRequestException('This invitation is no longer pending');
+    }
+
+    // Check if already a member
+    const existingMember = await this.userProjectsRepository.findOne({
+      where: { userId: user.id, projectId: invitation.projectId },
+    });
+
+    if (existingMember) {
+      invitation.status = InviteStatus.Accepted;
+      await this.projectInvitationsRepository.save(invitation);
+      return {
+        message: 'User is already a project member',
+        projectId: invitation.projectId,
+      };
+    }
+
+    // Add user to project
+    await this.userProjectsRepository.save({
+      userId: user.id,
+      projectId: invitation.projectId,
+      permission: invitation.permission,
+    });
+
+    // Update invitation status
+    invitation.status = InviteStatus.Accepted;
+    invitation.invitedUserId = user.id;
+    await this.projectInvitationsRepository.save(invitation);
+
+    return {
+      message: 'Invitation accepted successfully',
+      projectId: invitation.projectId,
     };
   }
 }
