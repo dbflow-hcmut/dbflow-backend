@@ -839,16 +839,23 @@ export class ProjectsService {
         results.push({ email: inviteItem.email, status: 'invited' });
       }
 
-      // Send email if requested
+      // Send email if requested (fire-and-forget for faster response)
       if (dto.sendEmail) {
-        await this.mailService.sendInvitationEmail(
-          inviteItem.email,
-          inviter.fullName,
-          project.name,
-          inviteItem.invite_permission,
-          invitationId,
-          dto.message,
-        );
+        this.mailService
+          .sendInvitationEmail(
+            inviteItem.email,
+            inviter.fullName,
+            project.name,
+            inviteItem.invite_permission,
+            invitationId,
+            dto.message,
+          )
+          .catch((error) => {
+            logger.error(
+              `Failed to send invitation email to ${inviteItem.email}`,
+              error,
+            );
+          });
       }
     }
 

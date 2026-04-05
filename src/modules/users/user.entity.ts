@@ -20,6 +20,18 @@ export class UserEntity {
   @Column({ name: 'full_name', type: 'varchar', length: 255, nullable: false })
   fullName: string;
 
+  @Column({ name: 'first_name', type: 'varchar', length: 255, nullable: true })
+  firstName: string;
+
+  @Column({ name: 'last_name', type: 'varchar', length: 255, nullable: true })
+  lastName: string;
+
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  phone: string;
+
+  @Column({ type: 'text', nullable: true })
+  bio: string;
+
   @Column({ type: 'varchar', length: 255, nullable: false })
   password: string;
 
