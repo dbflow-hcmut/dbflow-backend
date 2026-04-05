@@ -199,6 +199,79 @@ export class ProjectsService {
     );
   }
 
+  async deleteProject(userId: string, projectId: string) {
+    const project = await this.projectsRepository.findOne({
+      where: { id: projectId },
+    });
+
+    if (!project) {
+      throw new NotFoundException('Project not found');
+    }
+
+    // If user is owner, delete the entire project
+    if (project.ownerId === userId) {
+      // Get all schemas for this project
+      const schemas = await this.schemasRepository.find({
+        where: { projectId },
+      });
+
+      // Delete all schema files from S3
+      const s3DeletePromises = schemas.map(async (schema) => {
+        const currentVersionPrefix = `projects/${projectId}/schemas/${schema.id}/latest`;
+        const diagramS3Key = `${currentVersionPrefix}/diagram.schema.json`;
+        const modelS3Key = `${currentVersionPrefix}/model.schema.json`;
+
+        await Promise.allSettled([
+          this.s3Service.deleteFile(diagramS3Key),
+          this.s3Service.deleteFile(modelS3Key),
+        ]);
+      });
+
+      await Promise.allSettled(s3DeletePromises);
+
+      // Delete schemas
+      await this.schemasRepository.delete({ projectId });
+
+      // Delete user-project relationships
+      await this.userProjectsRepository.delete({ projectId });
+
+      // Delete pending invitations
+      await this.projectInvitationsRepository.delete({ projectId });
+
+      // Delete the project
+      await this.projectsRepository.delete({ id: projectId });
+
+      logger.log(`Project ${projectId} deleted successfully by owner ${userId}`);
+
+      return { message: 'Project deleted successfully', isOwner: true };
+    } else {
+      // If user is not owner, remove them from the project (leave project)
+      const userProject = await this.userProjectsRepository.findOne({
+        where: { userId, projectId },
+      });
+
+      if (!userProject) {
+        throw new NotFoundException('You are not a member of this project');
+      }
+
+      // Remove user from project
+      await this.userProjectsRepository.delete({ userId, projectId });
+
+      // Also remove any pending invitations for this user
+      const user = await this.usersService.findById(userId);
+      if (user) {
+        await this.projectInvitationsRepository.delete({
+          projectId,
+          email: user.email,
+        });
+      }
+
+      logger.log(`User ${userId} left project ${projectId}`);
+
+      return { message: 'You have left the project successfully', isOwner: false };
+    }
+  }
+
   private async initializeSchemaTemplates(
     projectId: string,
     schemaId: string,

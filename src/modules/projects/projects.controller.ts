@@ -200,6 +200,51 @@ export class ProjectsController {
     }
   }
 
+  @Delete(':projectId')
+  @UseGuards(JwtAuthGuard)
+  @ApiCookieAuth()
+  @ApiOperation({
+    summary: 'Delete a project or leave a project',
+    description: 'If the user is the project owner, the entire project will be deleted. If the user is a member, they will be removed from the project.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Project deleted successfully or user left the project',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - Invalid or missing token',
+    type: UnauthorizedResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Not Found - Project not found or user is not a member',
+    type: NotFoundResponseDto,
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Internal Server Error',
+    type: InternalServerErrorResponseDto,
+  })
+  async deleteProject(
+    @Req() req: AuthenticatedRequest,
+    @Param('projectId') projectId: string,
+  ) {
+    try {
+      const userId = req.user.id;
+      const result = await this.projectsService.deleteProject(userId, projectId);
+      return result;
+    } catch (error: unknown) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      if (error instanceof Error) {
+        throw new InternalServerErrorException(error.message);
+      }
+      throw new InternalServerErrorException('Internal server error');
+    }
+  }
+
   @Get(':projectId/permissions')
   @UseGuards(JwtAuthGuard)
   @ApiCookieAuth()
