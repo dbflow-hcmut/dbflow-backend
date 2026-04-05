@@ -101,10 +101,7 @@ export class ProjectCollaborationService
           // Auto-add user to members if accessing public project
           // This ensures users accessing via socket are also added to members
           try {
-            await projectsService.getProjectInformation(
-              payload.sub,
-              projectId,
-            );
+            await projectsService.getProjectInformation(payload.sub, projectId);
           } catch (error) {
             // Ignore errors from getProjectInformation since we already checked permissions
             logger.warn('Could not auto-add user to project members:', error);

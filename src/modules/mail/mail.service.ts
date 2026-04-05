@@ -24,7 +24,7 @@ export class MailService {
     token: string,
     message?: string,
   ): Promise<void> {
-    const permissionLabel = permission === 'editor' ? 'edit' : 'view';
+    // const permissionLabel = permission === 'editor' ? 'edit' : 'view';
 
     const htmlContent = `
       <!DOCTYPE html>

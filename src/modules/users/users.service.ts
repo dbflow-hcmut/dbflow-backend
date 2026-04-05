@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { UserEntity } from '@/modules/users/user.entity';
@@ -40,17 +44,17 @@ export class UsersService {
     }
     const emailHash = this.generateEmailHash(user.email);
     const avatar = `https://www.gravatar.com/avatar/${emailHash}?s=200&d=identicon&r=g`;
-    
+
     // If firstName and lastName are not set, try to split fullName
     let firstName = user.firstName;
     let lastName = user.lastName;
-    
+
     if (!firstName && !lastName && user.fullName) {
       const nameParts = user.fullName.trim().split(' ');
       firstName = nameParts[0] || '';
       lastName = nameParts.slice(1).join(' ') || '';
     }
-    
+
     return {
       id: user.id,
       email: user.email,
@@ -74,7 +78,7 @@ export class UsersService {
     user.lastName = dto.lastName;
     user.phone = dto.phone || '';
     user.bio = dto.bio || '';
-    
+
     // Combine firstName and lastName to update fullName
     user.fullName = `${dto.firstName} ${dto.lastName}`.trim();
 
@@ -90,7 +94,10 @@ export class UsersService {
     }
 
     // Verify current password
-    const isPasswordValid = await bcrypt.compare(dto.currentPassword, user.password);
+    const isPasswordValid = await bcrypt.compare(
+      dto.currentPassword,
+      user.password,
+    );
     if (!isPasswordValid) {
       throw new BadRequestException('Current password is incorrect');
     }

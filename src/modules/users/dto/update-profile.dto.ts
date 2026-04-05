@@ -20,7 +20,10 @@ export class UpdateProfileDto {
   @MaxLength(50)
   phone?: string;
 
-  @ApiProperty({ example: 'Software developer with 5 years experience', required: false })
+  @ApiProperty({
+    example: 'Software developer with 5 years experience',
+    required: false,
+  })
   @IsOptional()
   @IsString()
   bio?: string;

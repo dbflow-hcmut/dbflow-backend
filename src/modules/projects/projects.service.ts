@@ -326,10 +326,7 @@ export class ProjectsService {
     }
 
     // Check user's explicit permission in user_projects table
-    const userProject = await this.getUserProjectPermission(
-      userId,
-      projectId,
-    );
+    const userProject = await this.getUserProjectPermission(userId, projectId);
 
     if (userProject) {
       // User has explicit permission - must be Editor or owner
@@ -378,7 +375,7 @@ export class ProjectsService {
 
       // Check if user has a pending invitation
       const user = await this.usersService.findById(userId);
-      
+
       if (user) {
         const invitation = await this.projectInvitationsRepository.findOne({
           where: {
@@ -738,11 +735,7 @@ export class ProjectsService {
     return { message: 'User permission updated successfully' };
   }
 
-  async removeUserAccess(
-    userId: string,
-    projectId: string,
-    email: string,
-  ) {
+  async removeUserAccess(userId: string, projectId: string, email: string) {
     const project = await this.checkOwnership(userId, projectId);
 
     // Decode email in case it's URL encoded
