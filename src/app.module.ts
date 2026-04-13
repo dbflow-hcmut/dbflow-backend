@@ -7,6 +7,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { UserEntity } from '@/modules/users/user.entity';
 import { ProjectCollaborationModule } from './modules/project-collaboration/project-collaboration.module';
 import { ProjectsModule } from './modules/projects/projects.module';
+import { ChatModule } from './modules/chat/chat.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { ProjectsModule } from './modules/projects/projects.module';
     S3Module,
     ProjectCollaborationModule,
     AdminModule,
+    ChatModule,
   ],
   controllers: [],
   providers: [],
