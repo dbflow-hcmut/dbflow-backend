@@ -32,9 +32,13 @@ export class ChatMessageEntity {
   })
   createdAt: Date;
 
-  @ManyToOne(() => ChatConversationEntity, (conversation) => conversation.messages, {
-    onDelete: 'CASCADE',
-  })
+  @ManyToOne(
+    () => ChatConversationEntity,
+    (conversation) => conversation.messages,
+    {
+      onDelete: 'CASCADE',
+    },
+  )
   @JoinColumn({ name: 'conversation_id' })
   conversation: ChatConversationEntity;
 }

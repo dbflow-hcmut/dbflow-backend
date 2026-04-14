@@ -54,10 +54,12 @@ export class ProjectsService {
       permission: UserProjectPermission.Editor,
     });
 
-    await this.createSchema(userId, project.id, {
-      name: 'Untitled Diagram',
-      type: SchemaType.Conceptual,
-    });
+    if (!dto.skipDefaultSchema) {
+      await this.createSchema(userId, project.id, {
+        name: 'Untitled Diagram',
+        type: SchemaType.Conceptual,
+      });
+    }
 
     const projectWithOwner = await this.projectsRepository.findOne({
       where: { id: project.id },
@@ -241,7 +243,9 @@ export class ProjectsService {
       // Delete the project
       await this.projectsRepository.delete({ id: projectId });
 
-      logger.log(`Project ${projectId} deleted successfully by owner ${userId}`);
+      logger.log(
+        `Project ${projectId} deleted successfully by owner ${userId}`,
+      );
 
       return { message: 'Project deleted successfully', isOwner: true };
     } else {
@@ -268,7 +272,10 @@ export class ProjectsService {
 
       logger.log(`User ${userId} left project ${projectId}`);
 
-      return { message: 'You have left the project successfully', isOwner: false };
+      return {
+        message: 'You have left the project successfully',
+        isOwner: false,
+      };
     }
   }
 
@@ -982,5 +989,46 @@ export class ProjectsService {
       message: 'Invitation accepted successfully',
       projectId: invitation.projectId,
     };
+  }
+
+  /**
+   * Save model JSON directly to S3 for a schema.
+   * Used by AI chat to persist generated model data before the user opens the editor.
+   */
+  async saveSchemaModel(
+    userId: string,
+    projectId: string,
+    schemaId: string,
+    modelData: Record<string, unknown>,
+  ) {
+    await this.checkWritePermission(userId, projectId);
+
+    const schema = await this.schemasRepository.findOne({
+      where: { id: schemaId, projectId },
+    });
+
+    if (!schema) {
+      throw new NotFoundException('Schema not found');
+    }
+
+    const currentVersionPrefix = `projects/${projectId}/schemas/${schemaId}/latest`;
+    const modelS3Key = `${currentVersionPrefix}/model.schema.json`;
+    const diagramS3Key = `${currentVersionPrefix}/diagram.schema.json`;
+
+    await this.s3Service.putJsonObject(modelS3Key, modelData);
+
+    // Delete the empty diagram template so that the frontend hook
+    // regenerates the diagram from the model (with auto-layout).
+    try {
+      await this.s3Service.deleteFile(diagramS3Key);
+    } catch {
+      // Ignore errors — file may not exist
+    }
+
+    logger.log(
+      `Saved AI-generated model for schema ${schemaId} to S3: ${modelS3Key}`,
+    );
+
+    return { message: 'Model saved successfully' };
   }
 }

@@ -9,9 +9,11 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
   Req,
   UseGuards,
+  ValidationPipe,
 } from '@nestjs/common';
 import {
   ApiBody,
@@ -205,7 +207,8 @@ export class ProjectsController {
   @ApiCookieAuth()
   @ApiOperation({
     summary: 'Delete a project or leave a project',
-    description: 'If the user is the project owner, the entire project will be deleted. If the user is a member, they will be removed from the project.',
+    description:
+      'If the user is the project owner, the entire project will be deleted. If the user is a member, they will be removed from the project.',
   })
   @ApiResponse({
     status: 200,
@@ -232,7 +235,10 @@ export class ProjectsController {
   ) {
     try {
       const userId = req.user.id;
-      const result = await this.projectsService.deleteProject(userId, projectId);
+      const result = await this.projectsService.deleteProject(
+        userId,
+        projectId,
+      );
       return result;
     } catch (error: unknown) {
       if (error instanceof HttpException) {
@@ -598,13 +604,7 @@ export class ProjectsController {
         projectId,
         dto,
       );
-      return {
-        meta: {
-          statusCode: 201,
-          message: 'success',
-        },
-        data: schema,
-      };
+      return schema;
     } catch (error: unknown) {
       if (error instanceof HttpException) {
         throw error;
@@ -828,6 +828,48 @@ export class ProjectsController {
       if (error instanceof Error) {
         throw new InternalServerErrorException(error.message);
       }
+      throw new InternalServerErrorException('Internal server error');
+    }
+  }
+
+  @Put(':projectId/schemas/:schemaId/model')
+  @UseGuards(JwtAuthGuard)
+  @ApiCookieAuth()
+  @ApiOperation({
+    summary: 'Save model data for a schema',
+    description:
+      'Directly save model JSON to S3 storage for a schema. Used by AI chat to persist generated model data.',
+  })
+  @ApiResponse({ status: 200, description: 'Model saved successfully' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden' })
+  @ApiResponse({ status: 404, description: 'Not Found' })
+  @ApiResponse({ status: 500, description: 'Internal Server Error' })
+  async saveSchemaModel(
+    @Req() req: AuthenticatedRequest,
+    @Param('projectId') projectId: string,
+    @Param('schemaId') schemaId: string,
+    @Body(
+      new ValidationPipe({
+        transform: false,
+        whitelist: false,
+        forbidNonWhitelisted: false,
+      }),
+    )
+    modelData: Record<string, unknown>,
+  ) {
+    try {
+      const userId = req.user.id;
+      return await this.projectsService.saveSchemaModel(
+        userId,
+        projectId,
+        schemaId,
+        modelData,
+      );
+    } catch (error: unknown) {
+      if (error instanceof HttpException) throw error;
+      if (error instanceof Error)
+        throw new InternalServerErrorException(error.message);
       throw new InternalServerErrorException('Internal server error');
     }
   }

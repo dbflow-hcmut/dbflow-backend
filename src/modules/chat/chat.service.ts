@@ -50,6 +50,45 @@ export class ChatService {
   }
 
   /**
+   * Link a conversation to a project/schema
+   */
+  async linkToProject(
+    conversationId: string,
+    userId: string,
+    projectId?: string,
+    schemaId?: string,
+  ): Promise<ChatConversationEntity> {
+    const conversation = await this.conversationRepo.findOne({
+      where: { id: conversationId },
+    });
+
+    if (!conversation) {
+      throw new NotFoundException('Conversation not found');
+    }
+
+    if (conversation.userId !== userId) {
+      throw new ForbiddenException('You do not own this conversation');
+    }
+
+    if (projectId !== undefined) conversation.projectId = projectId;
+    if (schemaId !== undefined) conversation.schemaId = schemaId;
+    return this.conversationRepo.save(conversation);
+  }
+
+  /**
+   * Get conversations linked to a project for a user
+   */
+  async getProjectConversations(
+    projectId: string,
+    userId: string,
+  ): Promise<ChatConversationEntity[]> {
+    return this.conversationRepo.find({
+      where: { projectId, userId },
+      order: { updatedAt: 'DESC' },
+    });
+  }
+
+  /**
    * Get all conversations for a user, ordered by most recent
    */
   async getConversations(userId: string): Promise<ChatConversationEntity[]> {
@@ -122,7 +161,9 @@ export class ChatService {
           firstUserMsg.content.length > 80
             ? firstUserMsg.content.substring(0, 80) + '...'
             : firstUserMsg.content;
-        await this.conversationRepo.update(conversationId, { title: autoTitle });
+        await this.conversationRepo.update(conversationId, {
+          title: autoTitle,
+        });
       }
     }
 

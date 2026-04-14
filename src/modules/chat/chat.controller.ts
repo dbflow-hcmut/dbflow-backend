@@ -11,13 +11,7 @@ import {
   HttpException,
   InternalServerErrorException,
 } from '@nestjs/common';
-import {
-  ApiTags,
-  ApiOperation,
-  ApiCookieAuth,
-  ApiOkResponse,
-  ApiBody,
-} from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiCookieAuth, ApiBody } from '@nestjs/swagger';
 import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
 import { AuthenticatedRequest } from '@/common/types/request.type';
 import { ChatService } from './chat.service';
@@ -25,6 +19,7 @@ import {
   CreateConversationDto,
   SaveMessagesDto,
   UpdateConversationTitleDto,
+  UpdateConversationProjectDto,
 } from './dto/chat.dto';
 
 @ApiTags('chat')
@@ -71,6 +66,28 @@ export class ChatController {
     } catch (error) {
       if (error instanceof HttpException) throw error;
       throw new InternalServerErrorException('Failed to get conversations');
+    }
+  }
+
+  /**
+   * Get conversations linked to a project (must be before :conversationId route)
+   */
+  @Get('conversations/project/:projectId')
+  @UseGuards(JwtAuthGuard)
+  @ApiCookieAuth()
+  @ApiOperation({ summary: 'Get conversations for a project' })
+  async getProjectConversations(
+    @Req() req: AuthenticatedRequest,
+    @Param('projectId') projectId: string,
+  ) {
+    try {
+      const userId = req.user.id;
+      return await this.chatService.getProjectConversations(projectId, userId);
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new InternalServerErrorException(
+        'Failed to get project conversations',
+      );
     }
   }
 
@@ -164,6 +181,33 @@ export class ChatController {
     } catch (error) {
       if (error instanceof HttpException) throw error;
       throw new InternalServerErrorException('Failed to delete conversation');
+    }
+  }
+
+  /**
+   * Link a conversation to a project/schema
+   */
+  @Patch('conversations/:conversationId/project')
+  @UseGuards(JwtAuthGuard)
+  @ApiCookieAuth()
+  @ApiOperation({ summary: 'Link conversation to project' })
+  @ApiBody({ type: UpdateConversationProjectDto })
+  async linkToProject(
+    @Req() req: AuthenticatedRequest,
+    @Param('conversationId') conversationId: string,
+    @Body() dto: UpdateConversationProjectDto,
+  ) {
+    try {
+      const userId = req.user.id;
+      return await this.chatService.linkToProject(
+        conversationId,
+        userId,
+        dto.projectId,
+        dto.schemaId,
+      );
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new InternalServerErrorException('Failed to link conversation');
     }
   }
 }

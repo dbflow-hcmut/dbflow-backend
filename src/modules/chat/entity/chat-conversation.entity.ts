@@ -19,8 +19,19 @@ export class ChatConversationEntity {
   @Column({ name: 'user_id', type: 'uuid', nullable: false })
   userId: string;
 
-  @Column({ type: 'varchar', length: 255, nullable: false, default: 'New Chat' })
+  @Column({
+    type: 'varchar',
+    length: 255,
+    nullable: false,
+    default: 'New Chat',
+  })
   title: string;
+
+  @Column({ name: 'project_id', type: 'uuid', nullable: true })
+  projectId: string | null;
+
+  @Column({ name: 'schema_id', type: 'uuid', nullable: true })
+  schemaId: string | null;
 
   @CreateDateColumn({
     name: 'created_at',

@@ -1,4 +1,11 @@
-import { IsString, IsNotEmpty, IsOptional, IsArray, ValidateNested, IsIn } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsArray,
+  ValidateNested,
+  IsIn,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -24,6 +31,18 @@ export class CreateConversationDto {
   @IsString()
   @IsOptional()
   title?: string;
+}
+
+export class UpdateConversationProjectDto {
+  @ApiPropertyOptional({ description: 'Project ID to link' })
+  @IsString()
+  @IsOptional()
+  projectId?: string;
+
+  @ApiPropertyOptional({ description: 'Schema ID to link' })
+  @IsString()
+  @IsOptional()
+  schemaId?: string;
 }
 
 export class SaveMessagesDto {
