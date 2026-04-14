@@ -37,6 +37,22 @@ export class UsersService {
     return this.usersRepo.save(user);
   }
 
+  async findOrCreateGoogleUser(
+    email: string,
+    fullName: string,
+  ): Promise<UserEntity> {
+    const existing = await this.findByEmail(email);
+    if (existing) return existing;
+
+    const randomPassword = await bcrypt.hash(crypto.randomUUID(), 10);
+    const user = this.usersRepo.create({
+      email,
+      fullName,
+      password: randomPassword,
+    });
+    return this.usersRepo.save(user);
+  }
+
   async getProfile(id: string) {
     const user = await this.usersRepo.findOne({ where: { id } });
     if (!user) {

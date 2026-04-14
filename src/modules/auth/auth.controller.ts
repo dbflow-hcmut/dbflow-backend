@@ -16,6 +16,7 @@ import {
 import { Response } from 'express';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
+import { GoogleLoginDto } from './dto/google-login.dto';
 import { UsersService } from '@/modules/users/users.service';
 import { RegisterDto } from '@/modules/users/dto/register.dto';
 
@@ -117,6 +118,34 @@ export class AuthController {
       email: user.email,
       fullName: user.fullName,
       role: user.role,
+    };
+  }
+
+  @Post('google')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Login with Google',
+    description:
+      'Verifies Google ID token, creates or finds user, and sets JWT in cookie',
+  })
+  @ApiBody({ type: GoogleLoginDto })
+  async googleLogin(
+    @Body() dto: GoogleLoginDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.authService.loginWithGoogle(dto.idToken);
+
+    res.cookie('access_token', result.access_token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'none',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    return {
+      message: 'Google login successful',
+      user: result.user,
+      access_token: result.access_token,
     };
   }
 }
