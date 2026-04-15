@@ -8,6 +8,7 @@ import { UserEntity } from '@/modules/users/user.entity';
 import { ProjectCollaborationModule } from './modules/project-collaboration/project-collaboration.module';
 import { ProjectsModule } from './modules/projects/projects.module';
 import { ChatModule } from './modules/chat/chat.module';
+import { CommentsModule } from './modules/comments/comments.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { ChatModule } from './modules/chat/chat.module';
     ProjectCollaborationModule,
     AdminModule,
     ChatModule,
+    CommentsModule,
   ],
   controllers: [],
   providers: [],
