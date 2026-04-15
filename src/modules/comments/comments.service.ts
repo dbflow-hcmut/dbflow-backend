@@ -73,12 +73,12 @@ export class CommentsService {
     // Strip sensitive fields from user objects
     for (const comment of comments) {
       if (comment.user) {
-        delete (comment.user as Record<string, unknown>).password;
+        delete (comment.user as unknown as Record<string, unknown>).password;
       }
       const replies = (comment as CommentEntity & { replies: CommentEntity[] }).replies;
       for (const reply of replies) {
         if (reply.user) {
-          delete (reply.user as Record<string, unknown>).password;
+          delete (reply.user as unknown as Record<string, unknown>).password;
         }
       }
     }
