@@ -6,13 +6,11 @@ import {
   UpdateDateColumn,
   ManyToOne,
   JoinColumn,
-  Index,
 } from 'typeorm';
 import { ProjectEntity } from './project.entity';
 import { SchemaType } from '@/common/enums/schema-type.enum';
 
 @Entity('schemas')
-@Index(['projectId', 'name'], { unique: true })
 export class SchemaEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;

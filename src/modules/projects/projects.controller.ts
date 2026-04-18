@@ -904,4 +904,101 @@ export class ProjectsController {
       throw new InternalServerErrorException('Internal server error');
     }
   }
+
+  // ── Schema Versioning Endpoints ──────────────────────────────────
+
+  @Post(':projectId/schemas/:schemaId/versions')
+  @UseGuards(JwtAuthGuard)
+  @ApiCookieAuth()
+  @ApiOperation({
+    summary: 'Create a new version snapshot',
+    description: 'Snapshot the current schema model as a new version.',
+  })
+  @ApiResponse({ status: 201, description: 'Version created' })
+  @ApiResponse({ status: 400, description: 'Bad Request' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'Not Found' })
+  async createSchemaVersion(
+    @Req() req: AuthenticatedRequest,
+    @Param('projectId') projectId: string,
+    @Param('schemaId') schemaId: string,
+    @Body('label') label?: string,
+  ) {
+    try {
+      const userId = req.user.id;
+      return await this.projectsService.createSchemaVersion(
+        userId,
+        projectId,
+        schemaId,
+        label,
+      );
+    } catch (error: unknown) {
+      if (error instanceof HttpException) throw error;
+      if (error instanceof Error)
+        throw new InternalServerErrorException(error.message);
+      throw new InternalServerErrorException('Internal server error');
+    }
+  }
+
+  @Get(':projectId/schemas/:schemaId/versions')
+  @UseGuards(JwtAuthGuard)
+  @ApiCookieAuth()
+  @ApiOperation({
+    summary: 'List all versions of a schema',
+    description: 'Returns version history ordered by version desc.',
+  })
+  @ApiResponse({ status: 200, description: 'Version list' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'Not Found' })
+  async getSchemaVersions(
+    @Req() req: AuthenticatedRequest,
+    @Param('projectId') projectId: string,
+    @Param('schemaId') schemaId: string,
+  ) {
+    try {
+      const userId = req.user.id;
+      return await this.projectsService.getSchemaVersions(
+        userId,
+        projectId,
+        schemaId,
+      );
+    } catch (error: unknown) {
+      if (error instanceof HttpException) throw error;
+      if (error instanceof Error)
+        throw new InternalServerErrorException(error.message);
+      throw new InternalServerErrorException('Internal server error');
+    }
+  }
+
+  @Get(':projectId/schemas/:schemaId/versions/:versionId')
+  @UseGuards(JwtAuthGuard)
+  @ApiCookieAuth()
+  @ApiOperation({
+    summary: 'Get a specific version with its model data',
+    description: 'Returns the model JSON for a specific version.',
+  })
+  @ApiResponse({ status: 200, description: 'Version data' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'Not Found' })
+  async getSchemaVersionData(
+    @Req() req: AuthenticatedRequest,
+    @Param('projectId') projectId: string,
+    @Param('schemaId') schemaId: string,
+    @Param('versionId') versionId: string,
+  ) {
+    try {
+      const userId = req.user.id;
+      return await this.projectsService.getSchemaVersionData(
+        userId,
+        projectId,
+        schemaId,
+        versionId,
+      );
+    } catch (error: unknown) {
+      if (error instanceof HttpException) throw error;
+      if (error instanceof Error)
+        throw new InternalServerErrorException(error.message);
+      throw new InternalServerErrorException('Internal server error');
+    }
+  }
 }

@@ -71,15 +71,14 @@ export class CommentsService {
     }
 
     // Strip sensitive fields from user objects
+    const stripPassword = (u: { password?: string }) => {
+      if (u) delete u.password;
+    };
     for (const comment of comments) {
-      if (comment.user) {
-        delete (comment.user as unknown as Record<string, unknown>).password;
-      }
+      if (comment.user) stripPassword(comment.user);
       const replies = (comment as CommentEntity & { replies: CommentEntity[] }).replies;
       for (const reply of replies) {
-        if (reply.user) {
-          delete (reply.user as unknown as Record<string, unknown>).password;
-        }
+        if (reply.user) stripPassword(reply.user);
       }
     }
 

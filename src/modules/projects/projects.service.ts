@@ -4,6 +4,7 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  Inject,
 } from '@nestjs/common';
 import { CreateProjectDto } from './dto/createProject.dto';
 import { GetProjectDto } from './dto/getProject.dto';
@@ -12,6 +13,7 @@ import { InviteUsersDto } from './dto/inviteUsers.dto';
 import { Repository } from 'typeorm';
 import { ProjectEntity } from './entity/project.entity';
 import { SchemaEntity } from './entity/schema.entity';
+import { SchemaVersionEntity } from './entity/schema-version.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { UserProjectEntity } from './entity/user-project.entity';
 import { ProjectInvitationEntity } from './entity/project-invitation.entity';
@@ -23,6 +25,8 @@ import { MailService } from '../mail/mail.service';
 import * as crypto from 'crypto';
 import { SchemaType } from '@/common/enums/schema-type.enum';
 import { ProjectVisibility } from '@/common/enums/project-visibility.enum';
+import Redis from 'ioredis';
+import * as Y from 'yjs';
 
 const logger = new Logger('ProjectsService');
 
@@ -37,9 +41,12 @@ export class ProjectsService {
     private readonly projectInvitationsRepository: Repository<ProjectInvitationEntity>,
     @InjectRepository(SchemaEntity)
     private readonly schemasRepository: Repository<SchemaEntity>,
+    @InjectRepository(SchemaVersionEntity)
+    private readonly schemaVersionsRepository: Repository<SchemaVersionEntity>,
     private readonly s3Service: S3Service,
     private readonly usersService: UsersService,
     private readonly mailService: MailService,
+    @Inject('REDIS_CLIENT') private readonly redisClient: Redis,
   ) {}
 
   async createProject(userId: string, dto: CreateProjectDto) {
@@ -1030,5 +1037,177 @@ export class ProjectsService {
     );
 
     return { message: 'Model saved successfully' };
+  }
+
+  // ── Schema Versioning ────────────────────────────────────────────
+
+  /**
+   * Read the latest model + diagram data from Redis (Yjs doc, freshest)
+   * with S3 fallback.
+   */
+  private async getLatestSchemaDataFromRedis(
+    projectId: string,
+    schemaId: string,
+  ): Promise<{ model: Record<string, unknown> | null; diagram: Record<string, unknown> | null }> {
+    const redisKey = `diagram:${projectId}:${schemaId}`;
+    const cached = await this.redisClient.get(redisKey);
+
+    if (cached) {
+      logger.log(`getLatestSchemaData: reading from Redis: ${redisKey}`);
+      const ydoc = new Y.Doc();
+      Y.applyUpdate(ydoc, Buffer.from(cached, 'base64'));
+
+      const modelStr = ydoc.getMap('model').get('data') as string | undefined;
+      const diagramStr = ydoc.getMap('diagram').get('data') as string | undefined;
+
+      let model: Record<string, unknown> | null = null;
+      let diagram: Record<string, unknown> | null = null;
+
+      try { if (modelStr) model = JSON.parse(modelStr) as Record<string, unknown>; } catch { /* ignore */ }
+      try { if (diagramStr) diagram = JSON.parse(diagramStr) as Record<string, unknown>; } catch { /* ignore */ }
+
+      ydoc.destroy();
+      return { model, diagram };
+    }
+
+    // Fallback to S3
+    logger.log(`getLatestSchemaData: Redis miss, falling back to S3 for ${schemaId}`);
+    const prefix = `projects/${projectId}/schemas/${schemaId}/latest`;
+    const [model, diagram] = await Promise.all([
+      this.s3Service.getJsonObject<Record<string, unknown>>(`${prefix}/model.schema.json`),
+      this.s3Service.getJsonObject<Record<string, unknown>>(`${prefix}/diagram.schema.json`),
+    ]);
+
+    return { model: model ?? null, diagram: diagram ?? null };
+  }
+
+  /**
+   * Create a new version snapshot of the current schema.
+   * Reads the freshest data from Redis (Yjs doc) with S3 fallback.
+   * No client data needed.
+   */
+  async createSchemaVersion(
+    userId: string,
+    projectId: string,
+    schemaId: string,
+    label?: string,
+  ) {
+    await this.checkWritePermission(userId, projectId);
+
+    const schema = await this.schemasRepository.findOne({
+      where: { id: schemaId, projectId },
+    });
+    if (!schema) {
+      throw new NotFoundException('Schema not found');
+    }
+
+    // Read freshest data from Redis (Yjs doc) with S3 fallback
+    const { model: modelData, diagram: diagramData } =
+      await this.getLatestSchemaDataFromRedis(projectId, schemaId);
+
+    if (!modelData) {
+      throw new BadRequestException('No model data found for this schema. Save your diagram first.');
+    }
+
+    // Determine next version number
+    const latestVersion = await this.schemaVersionsRepository.findOne({
+      where: { schemaId },
+      order: { version: 'DESC' },
+    });
+    const nextVersion = (latestVersion?.version ?? 0) + 1;
+
+    // Save model snapshot to S3
+    const versionS3Key = `projects/${projectId}/schemas/${schemaId}/v${nextVersion}/model.schema.json`;
+    await this.s3Service.putJsonObject(versionS3Key, modelData);
+
+    // Save diagram snapshot to S3
+    let diagramS3Key: string | null = null;
+    if (diagramData) {
+      diagramS3Key = `projects/${projectId}/schemas/${schemaId}/v${nextVersion}/diagram.schema.json`;
+      await this.s3Service.putJsonObject(diagramS3Key, diagramData);
+    }
+
+    // Create version record
+    const versionEntity = await this.schemaVersionsRepository.save({
+      schemaId,
+      version: nextVersion,
+      label: label || `Version ${nextVersion}`,
+      s3Key: versionS3Key,
+      createdBy: userId,
+    });
+
+    logger.log(
+      `Created version ${nextVersion} for schema ${schemaId}: ${versionS3Key}`,
+    );
+
+    return {
+      id: versionEntity.id,
+      version: versionEntity.version,
+      label: versionEntity.label,
+      createdAt: versionEntity.createdAt,
+    };
+  }
+
+  /**
+   * List all versions for a schema, ordered by version desc.
+   */
+  async getSchemaVersions(
+    userId: string,
+    projectId: string,
+    schemaId: string,
+  ) {
+    await this.checkViewPermission(userId, projectId);
+
+    const schema = await this.schemasRepository.findOne({
+      where: { id: schemaId, projectId },
+    });
+    if (!schema) {
+      throw new NotFoundException('Schema not found');
+    }
+
+    const versions = await this.schemaVersionsRepository.find({
+      where: { schemaId },
+      order: { version: 'DESC' },
+      select: ['id', 'version', 'label', 'createdBy', 'createdAt'],
+    });
+
+    return versions;
+  }
+
+  /**
+   * Get the model data for a specific version.
+   */
+  async getSchemaVersionData(
+    userId: string,
+    projectId: string,
+    schemaId: string,
+    versionId: string,
+  ) {
+    await this.checkViewPermission(userId, projectId);
+
+    const version = await this.schemaVersionsRepository.findOne({
+      where: { id: versionId, schemaId },
+    });
+    if (!version) {
+      throw new NotFoundException('Version not found');
+    }
+
+    const modelData = await this.s3Service.getJsonObject<Record<string, unknown>>(version.s3Key);
+    if (!modelData) {
+      throw new NotFoundException('Version data not found in storage');
+    }
+
+    // Try to load diagram snapshot (may not exist for older versions)
+    const diagramS3Key = version.s3Key.replace('model.schema.json', 'diagram.schema.json');
+    const diagramData = await this.s3Service.getJsonObject<Record<string, unknown>>(diagramS3Key).catch(() => null);
+
+    return {
+      id: version.id,
+      version: version.version,
+      label: version.label,
+      createdAt: version.createdAt,
+      model: modelData,
+      diagram: diagramData ?? null,
+    };
   }
 }
