@@ -29,7 +29,9 @@ export class CreateCommentDto {
   @IsOptional()
   parentId?: string;
 
-  @ApiPropertyOptional({ description: 'Attached node ID for following node position' })
+  @ApiPropertyOptional({
+    description: 'Attached node ID for following node position',
+  })
   @IsString()
   @IsOptional()
   nodeId?: string;

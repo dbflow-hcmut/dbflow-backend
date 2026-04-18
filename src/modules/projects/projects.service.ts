@@ -1048,7 +1048,10 @@ export class ProjectsService {
   private async getLatestSchemaDataFromRedis(
     projectId: string,
     schemaId: string,
-  ): Promise<{ model: Record<string, unknown> | null; diagram: Record<string, unknown> | null }> {
+  ): Promise<{
+    model: Record<string, unknown> | null;
+    diagram: Record<string, unknown> | null;
+  }> {
     const redisKey = `diagram:${projectId}:${schemaId}`;
     const cached = await this.redisClient.get(redisKey);
 
@@ -1058,24 +1061,41 @@ export class ProjectsService {
       Y.applyUpdate(ydoc, Buffer.from(cached, 'base64'));
 
       const modelStr = ydoc.getMap('model').get('data') as string | undefined;
-      const diagramStr = ydoc.getMap('diagram').get('data') as string | undefined;
+      const diagramStr = ydoc.getMap('diagram').get('data') as
+        | string
+        | undefined;
 
       let model: Record<string, unknown> | null = null;
       let diagram: Record<string, unknown> | null = null;
 
-      try { if (modelStr) model = JSON.parse(modelStr) as Record<string, unknown>; } catch { /* ignore */ }
-      try { if (diagramStr) diagram = JSON.parse(diagramStr) as Record<string, unknown>; } catch { /* ignore */ }
+      try {
+        if (modelStr) model = JSON.parse(modelStr) as Record<string, unknown>;
+      } catch {
+        /* ignore */
+      }
+      try {
+        if (diagramStr)
+          diagram = JSON.parse(diagramStr) as Record<string, unknown>;
+      } catch {
+        /* ignore */
+      }
 
       ydoc.destroy();
       return { model, diagram };
     }
 
     // Fallback to S3
-    logger.log(`getLatestSchemaData: Redis miss, falling back to S3 for ${schemaId}`);
+    logger.log(
+      `getLatestSchemaData: Redis miss, falling back to S3 for ${schemaId}`,
+    );
     const prefix = `projects/${projectId}/schemas/${schemaId}/latest`;
     const [model, diagram] = await Promise.all([
-      this.s3Service.getJsonObject<Record<string, unknown>>(`${prefix}/model.schema.json`),
-      this.s3Service.getJsonObject<Record<string, unknown>>(`${prefix}/diagram.schema.json`),
+      this.s3Service.getJsonObject<Record<string, unknown>>(
+        `${prefix}/model.schema.json`,
+      ),
+      this.s3Service.getJsonObject<Record<string, unknown>>(
+        `${prefix}/diagram.schema.json`,
+      ),
     ]);
 
     return { model: model ?? null, diagram: diagram ?? null };
@@ -1106,7 +1126,9 @@ export class ProjectsService {
       await this.getLatestSchemaDataFromRedis(projectId, schemaId);
 
     if (!modelData) {
-      throw new BadRequestException('No model data found for this schema. Save your diagram first.');
+      throw new BadRequestException(
+        'No model data found for this schema. Save your diagram first.',
+      );
     }
 
     // Determine next version number
@@ -1151,11 +1173,7 @@ export class ProjectsService {
   /**
    * List all versions for a schema, ordered by version desc.
    */
-  async getSchemaVersions(
-    userId: string,
-    projectId: string,
-    schemaId: string,
-  ) {
+  async getSchemaVersions(userId: string, projectId: string, schemaId: string) {
     await this.checkViewPermission(userId, projectId);
 
     const schema = await this.schemasRepository.findOne({
@@ -1192,14 +1210,21 @@ export class ProjectsService {
       throw new NotFoundException('Version not found');
     }
 
-    const modelData = await this.s3Service.getJsonObject<Record<string, unknown>>(version.s3Key);
+    const modelData = await this.s3Service.getJsonObject<
+      Record<string, unknown>
+    >(version.s3Key);
     if (!modelData) {
       throw new NotFoundException('Version data not found in storage');
     }
 
     // Try to load diagram snapshot (may not exist for older versions)
-    const diagramS3Key = version.s3Key.replace('model.schema.json', 'diagram.schema.json');
-    const diagramData = await this.s3Service.getJsonObject<Record<string, unknown>>(diagramS3Key).catch(() => null);
+    const diagramS3Key = version.s3Key.replace(
+      'model.schema.json',
+      'diagram.schema.json',
+    );
+    const diagramData = await this.s3Service
+      .getJsonObject<Record<string, unknown>>(diagramS3Key)
+      .catch(() => null);
 
     return {
       id: version.id,
@@ -1209,5 +1234,23 @@ export class ProjectsService {
       model: modelData,
       diagram: diagramData ?? null,
     };
+  }
+
+  // ── Shared HTML docs ───────────────────────────────────────────
+
+  async shareHtmlDocs(html: string): Promise<{ id: string }> {
+    const id = crypto.randomUUID();
+    const key = `shared-docs/${id}.json`;
+    await this.s3Service.putJsonObject(key, { html });
+    return { id };
+  }
+
+  async getSharedHtmlDocs(id: string): Promise<string> {
+    const key = `shared-docs/${id}.json`;
+    const data = await this.s3Service.getJsonObject<{ html: string }>(key);
+    if (!data?.html) {
+      throw new NotFoundException('Shared document not found');
+    }
+    return data.html;
   }
 }

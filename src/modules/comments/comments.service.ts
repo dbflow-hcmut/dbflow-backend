@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
 import { CommentEntity } from './entity/comment.entity';
@@ -76,7 +80,8 @@ export class CommentsService {
     };
     for (const comment of comments) {
       if (comment.user) stripPassword(comment.user);
-      const replies = (comment as CommentEntity & { replies: CommentEntity[] }).replies;
+      const replies = (comment as CommentEntity & { replies: CommentEntity[] })
+        .replies;
       for (const reply of replies) {
         if (reply.user) stripPassword(reply.user);
       }

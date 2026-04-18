@@ -1,5 +1,6 @@
 import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -12,6 +13,7 @@ import {
   Put,
   Query,
   Req,
+  Res,
   UseGuards,
   ValidationPipe,
 } from '@nestjs/common';
@@ -19,11 +21,14 @@ import {
   ApiBody,
   ApiOkResponse,
   ApiOperation,
+  ApiParam,
+  ApiProduces,
   ApiQuery,
   ApiResponse,
   ApiTags,
   ApiCookieAuth,
 } from '@nestjs/swagger';
+import { Response } from 'express';
 import { AuthenticatedRequest } from '@/common/types/request.type';
 import { CreateProjectDto } from './dto/createProject.dto';
 import { GetProjectDto } from './dto/getProject.dto';
@@ -994,6 +999,58 @@ export class ProjectsController {
         schemaId,
         versionId,
       );
+    } catch (error: unknown) {
+      if (error instanceof HttpException) throw error;
+      if (error instanceof Error)
+        throw new InternalServerErrorException(error.message);
+      throw new InternalServerErrorException('Internal server error');
+    }
+  }
+
+  // ── Shared HTML docs ─────────────────────────────────────────
+
+  @Post('shared-docs')
+  @UseGuards(JwtAuthGuard)
+  @ApiCookieAuth()
+  @ApiOperation({
+    summary: 'Share HTML documentation',
+    description:
+      'Upload HTML content and get a shareable ID (no login required to view)',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['html'],
+      properties: { html: { type: 'string' } },
+    },
+  })
+  @ApiResponse({ status: 200, description: 'Returns shareable ID' })
+  async shareHtmlDocs(@Body('html') html: string) {
+    try {
+      if (!html) throw new BadRequestException('HTML content is required');
+      return await this.projectsService.shareHtmlDocs(html);
+    } catch (error: unknown) {
+      if (error instanceof HttpException) throw error;
+      if (error instanceof Error)
+        throw new InternalServerErrorException(error.message);
+      throw new InternalServerErrorException('Internal server error');
+    }
+  }
+
+  @Get('shared-docs/:id')
+  @ApiOperation({
+    summary: 'View shared HTML documentation',
+    description: 'Public endpoint — no authentication required',
+  })
+  @ApiParam({ name: 'id', description: 'Shared document ID' })
+  @ApiProduces('text/html')
+  @ApiResponse({ status: 200, description: 'HTML content' })
+  @ApiResponse({ status: 404, description: 'Not Found' })
+  async getSharedHtmlDocs(@Param('id') id: string, @Res() res: Response) {
+    try {
+      const html = await this.projectsService.getSharedHtmlDocs(id);
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.send(html);
     } catch (error: unknown) {
       if (error instanceof HttpException) throw error;
       if (error instanceof Error)
