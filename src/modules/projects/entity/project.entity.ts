@@ -30,6 +30,13 @@ export class ProjectEntity {
   name: string;
 
   @Column({
+    type: 'text',
+    nullable: true,
+    default: null,
+  })
+  description: string | null;
+
+  @Column({
     type: 'enum',
     enum: ProjectVisibility,
     nullable: false,

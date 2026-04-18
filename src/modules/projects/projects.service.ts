@@ -53,6 +53,7 @@ export class ProjectsService {
     const project = await this.projectsRepository.save({
       ownerId: userId,
       name: dto.name,
+      description: dto.description ?? null,
     });
 
     await this.userProjectsRepository.save({

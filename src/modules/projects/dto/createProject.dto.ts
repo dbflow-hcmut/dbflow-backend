@@ -14,6 +14,11 @@ export class CreateProjectDto {
   @MaxLength(255)
   name: string;
 
+  @ApiPropertyOptional({ example: 'A short description of the project' })
+  @IsOptional()
+  @IsString()
+  description?: string;
+
   @ApiPropertyOptional({
     description:
       'Skip creating the default schema (useful when AI will create its own schema)',
