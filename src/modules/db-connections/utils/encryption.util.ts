@@ -2,7 +2,6 @@ import * as crypto from 'crypto';
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 16;
-const TAG_LENGTH = 16;
 
 function getKey(): Buffer {
   const key = process.env.DB_CONN_ENCRYPTION_KEY;
@@ -42,5 +41,5 @@ export function decrypt(encoded: string): string {
   const data = Buffer.from(dataB64, 'base64');
   const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
   decipher.setAuthTag(tag);
-  return decipher.update(data) + decipher.final('utf8');
+  return decipher.update(data).toString('utf8') + decipher.final('utf8');
 }

@@ -51,7 +51,10 @@ export async function testConnection(
             'SQL Server driver (mssql) is not installed. Install it with: npm install mssql',
         };
       default:
-        return { success: false, message: `Unsupported DBMS: ${params.dbms}` };
+        return {
+          success: false,
+          message: `Unsupported DBMS: ${params.dbms as string}`,
+        };
     }
 
     return {

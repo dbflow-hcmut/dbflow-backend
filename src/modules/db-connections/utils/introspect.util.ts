@@ -1,8 +1,42 @@
 import { Client as PgClient } from 'pg';
-import {
-  DbConnectionDbms,
-  SshAuthType,
-} from '@/common/enums/db-connection.enum';
+import { DbConnectionDbms } from '@/common/enums/db-connection.enum';
+
+// ─── Raw row types for pg query results ──────────────────────────────
+interface PgSchemaRow {
+  schema_name: string;
+}
+interface PgTableRow {
+  table_name: string;
+}
+interface PgKeyRow {
+  column_name: string;
+}
+interface PgColumnRow {
+  column_name: string;
+  data_type: string;
+  udt_name: string;
+  character_maximum_length: number | null;
+  numeric_precision: number | null;
+  numeric_scale: number | null;
+  is_nullable: string;
+  column_default: string | null;
+  is_identity: string;
+}
+interface PgFKRow {
+  constraint_name: string;
+  column_name: string;
+  ref_table: string;
+  ref_column: string;
+  delete_rule: string;
+  update_rule: string;
+}
+interface PgIndexRow {
+  index_name: string;
+  column_name: string;
+  index_type: string;
+  is_unique: boolean;
+  sort_order: string;
+}
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -98,7 +132,7 @@ async function listSchemasPostgres(
   });
   try {
     await client.connect();
-    const res = await client.query(`
+    const res = await client.query<PgSchemaRow>(`
       SELECT schema_name
       FROM information_schema.schemata
       WHERE schema_name NOT IN ('information_schema', 'pg_catalog', 'pg_toast')
@@ -106,7 +140,7 @@ async function listSchemasPostgres(
         AND schema_name NOT LIKE 'pg_toast_temp_%'
       ORDER BY schema_name
     `);
-    return res.rows.map((r) => r.schema_name as string);
+    return res.rows.map((r) => r.schema_name);
   } finally {
     await client.end().catch(() => {});
   }
@@ -161,7 +195,7 @@ async function introspectPostgres(
     const schemaName = params.schema ?? 'public';
 
     // 1. Get all tables
-    const tablesRes = await client.query(
+    const tablesRes = await client.query<PgTableRow>(
       `SELECT table_name
        FROM information_schema.tables
        WHERE table_schema = $1
@@ -176,7 +210,7 @@ async function introspectPostgres(
       const tableName: string = row.table_name;
 
       // 2. Columns
-      const colsRes = await client.query(
+      const colsRes = await client.query<PgColumnRow>(
         `
         SELECT
           c.column_name,
@@ -197,7 +231,7 @@ async function introspectPostgres(
       );
 
       // 3. Primary keys
-      const pkRes = await client.query(
+      const pkRes = await client.query<PgKeyRow>(
         `
         SELECT kcu.column_name
         FROM information_schema.table_constraints tc
@@ -210,10 +244,10 @@ async function introspectPostgres(
       `,
         [schemaName, tableName],
       );
-      const pkColumns = new Set(pkRes.rows.map((r) => r.column_name as string));
+      const pkColumns = new Set(pkRes.rows.map((r) => r.column_name));
 
       // 4. Unique constraints (column-level)
-      const uniqueRes = await client.query(
+      const uniqueRes = await client.query<PgKeyRow>(
         `
         SELECT kcu.column_name
         FROM information_schema.table_constraints tc
@@ -226,38 +260,33 @@ async function introspectPostgres(
       `,
         [schemaName, tableName],
       );
-      const uniqueColumns = new Set(
-        uniqueRes.rows.map((r) => r.column_name as string),
-      );
+      const uniqueColumns = new Set(uniqueRes.rows.map((r) => r.column_name));
 
       const columns: IntrospectedColumn[] = colsRes.rows.map((col) => {
-        const dataType = mapPgType(
-          col.udt_name as string,
-          col.data_type as string,
-        );
+        const dataType = mapPgType(col.udt_name, col.data_type);
         const length = buildPgLength(col);
         const isSerial =
-          typeof col.column_default === 'string' &&
-          (col.column_default as string).startsWith('nextval(');
+          col.column_default !== null &&
+          col.column_default.startsWith('nextval(');
         const isIdentity = col.is_identity === 'YES';
 
         return {
-          name: col.column_name as string,
+          name: col.column_name,
           dataType,
           length: length || undefined,
-          nullable: (col.is_nullable as string) === 'YES',
-          isPrimaryKey: pkColumns.has(col.column_name as string),
-          isUnique: uniqueColumns.has(col.column_name as string),
+          nullable: col.is_nullable === 'YES',
+          isPrimaryKey: pkColumns.has(col.column_name),
+          isUnique: uniqueColumns.has(col.column_name),
           autoIncrement: isSerial || isIdentity,
           defaultValue:
-            col.column_default && !isSerial && !isIdentity
-              ? String(col.column_default)
+            col.column_default !== null && !isSerial && !isIdentity
+              ? col.column_default
               : undefined,
         };
       });
 
       // 5. Foreign keys
-      const fkRes = await client.query(
+      const fkRes = await client.query<PgFKRow>(
         `
         SELECT
           tc.constraint_name,
@@ -286,24 +315,24 @@ async function introspectPostgres(
 
       const fkMap = new Map<string, IntrospectedForeignKey>();
       for (const fk of fkRes.rows) {
-        const name = fk.constraint_name as string;
+        const name = fk.constraint_name;
         if (!fkMap.has(name)) {
           fkMap.set(name, {
             constraintName: name,
             columns: [],
-            refTable: fk.ref_table as string,
+            refTable: fk.ref_table,
             refColumns: [],
-            onDelete: fk.delete_rule as string,
-            onUpdate: fk.update_rule as string,
+            onDelete: fk.delete_rule,
+            onUpdate: fk.update_rule,
           });
         }
         const entry = fkMap.get(name)!;
-        entry.columns.push(fk.column_name as string);
-        entry.refColumns.push(fk.ref_column as string);
+        entry.columns.push(fk.column_name);
+        entry.refColumns.push(fk.ref_column);
       }
 
       // 6. Indexes (non-PK, non-unique-constraint)
-      const idxRes = await client.query(
+      const idxRes = await client.query<PgIndexRow>(
         `
         SELECT
           i.relname AS index_name,
@@ -328,18 +357,18 @@ async function introspectPostgres(
 
       const idxMap = new Map<string, IntrospectedIndex>();
       for (const idx of idxRes.rows) {
-        const name = idx.index_name as string;
+        const name = idx.index_name;
         if (!idxMap.has(name)) {
           idxMap.set(name, {
             name,
             columns: [],
-            isUnique: idx.is_unique as boolean,
-            type: (idx.index_type as string).toUpperCase(),
+            isUnique: idx.is_unique,
+            type: idx.index_type.toUpperCase(),
           });
         }
         idxMap.get(name)!.columns.push({
-          columnName: idx.column_name as string,
-          order: (idx.sort_order as string) === 'DESC' ? 'DESC' : 'ASC',
+          columnName: idx.column_name,
+          order: idx.sort_order === 'DESC' ? 'DESC' : 'ASC',
         });
       }
 
@@ -394,15 +423,11 @@ function mapPgType(udtName: string, dataType: string): string {
   return map[udtName] ?? dataType.toUpperCase();
 }
 
-function buildPgLength(col: Record<string, unknown>): string | undefined {
-  if (col.character_maximum_length) {
+function buildPgLength(col: PgColumnRow): string | undefined {
+  if (col.character_maximum_length !== null) {
     return String(col.character_maximum_length);
   }
-  if (
-    col.numeric_precision &&
-    col.numeric_scale !== null &&
-    col.numeric_scale !== undefined
-  ) {
+  if (col.numeric_precision !== null && col.numeric_scale !== null) {
     return `${col.numeric_precision},${col.numeric_scale}`;
   }
   return undefined;
@@ -463,12 +488,18 @@ async function introspectMySQL(
           (col.DATA_TYPE as string) ?? (col.data_type as string) ?? '';
 
         let length: string | undefined;
-        const charMax =
-          col.CHARACTER_MAXIMUM_LENGTH ?? col.character_maximum_length;
-        const numPrec = col.NUMERIC_PRECISION ?? col.numeric_precision;
-        const numScale = col.NUMERIC_SCALE ?? col.numeric_scale;
-        if (charMax) length = String(charMax);
-        else if (numPrec && numScale !== null && numScale !== undefined)
+        const charMax = (col.CHARACTER_MAXIMUM_LENGTH ??
+          col.character_maximum_length) as number | null | undefined;
+        const numPrec = (col.NUMERIC_PRECISION ?? col.numeric_precision) as
+          | number
+          | null
+          | undefined;
+        const numScale = (col.NUMERIC_SCALE ?? col.numeric_scale) as
+          | number
+          | null
+          | undefined;
+        if (charMax != null) length = String(charMax);
+        else if (numPrec != null && numScale != null)
           length = `${numPrec},${numScale}`;
 
         return {
