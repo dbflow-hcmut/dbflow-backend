@@ -9,6 +9,7 @@ import { ProjectCollaborationModule } from './modules/project-collaboration/proj
 import { ProjectsModule } from './modules/projects/projects.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { CommentsModule } from './modules/comments/comments.module';
+import { DbConnectionsModule } from './modules/db-connections/db-connections.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { CommentsModule } from './modules/comments/comments.module';
     AdminModule,
     ChatModule,
     CommentsModule,
+    DbConnectionsModule,
   ],
   controllers: [],
   providers: [],
