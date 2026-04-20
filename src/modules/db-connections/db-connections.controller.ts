@@ -105,7 +105,10 @@ export class DbConnectionsController {
 
   @Post('db-connections/:connId/plain-params')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Get decrypted connection params for local agent forwarding (owner only)' })
+  @ApiOperation({
+    summary:
+      'Get decrypted connection params for local agent forwarding (owner only)',
+  })
   async getPlainParams(
     @Req() req: AuthenticatedRequest,
     @Param('connId') connId: string,
@@ -149,7 +152,11 @@ export class DbConnectionsController {
     @Param('projectId') projectId: string,
     @Body(new ValidationPipe({ whitelist: true })) dto: LinkDbConnectionDto,
   ) {
-    return this.service.linkToProject(req.user.id, projectId, dto.dbConnectionId);
+    return this.service.linkToProject(
+      req.user.id,
+      projectId,
+      dto.dbConnectionId,
+    );
   }
 
   @Delete('projects/:projectId/db-connections/:connId/unlink')

@@ -457,14 +457,14 @@ async function introspectMySQL(
       ).map((col) => {
         const colName =
           (col.COLUMN_NAME as string) ?? (col.column_name as string);
-        const colKey =
-          (col.COLUMN_KEY as string) ?? (col.column_key as string);
+        const colKey = (col.COLUMN_KEY as string) ?? (col.column_key as string);
         const extra = (col.EXTRA as string) ?? (col.extra as string) ?? '';
         const rawType =
           (col.DATA_TYPE as string) ?? (col.data_type as string) ?? '';
 
         let length: string | undefined;
-        const charMax = col.CHARACTER_MAXIMUM_LENGTH ?? col.character_maximum_length;
+        const charMax =
+          col.CHARACTER_MAXIMUM_LENGTH ?? col.character_maximum_length;
         const numPrec = col.NUMERIC_PRECISION ?? col.numeric_precision;
         const numScale = col.NUMERIC_SCALE ?? col.numeric_scale;
         if (charMax) length = String(charMax);
@@ -482,7 +482,7 @@ async function introspectMySQL(
           isUnique: colKey === 'UNI',
           autoIncrement: extra.toLowerCase().includes('auto_increment'),
           defaultValue:
-            col.COLUMN_DEFAULT ?? col.column_default
+            (col.COLUMN_DEFAULT ?? col.column_default)
               ? String(col.COLUMN_DEFAULT ?? col.column_default)
               : undefined,
         };
@@ -510,14 +510,12 @@ async function introspectMySQL(
 
       const fkMap = new Map<string, IntrospectedForeignKey>();
       for (const fk of fkRows as Array<Record<string, string>>) {
-        const name =
-          fk.CONSTRAINT_NAME ?? fk.constraint_name;
+        const name = fk.CONSTRAINT_NAME ?? fk.constraint_name;
         if (!fkMap.has(name)) {
           fkMap.set(name, {
             constraintName: name,
             columns: [],
-            refTable:
-              fk.REFERENCED_TABLE_NAME ?? fk.referenced_table_name,
+            refTable: fk.REFERENCED_TABLE_NAME ?? fk.referenced_table_name,
             refColumns: [],
             onDelete: fk.DELETE_RULE ?? fk.delete_rule,
             onUpdate: fk.UPDATE_RULE ?? fk.update_rule,
@@ -544,25 +542,23 @@ async function introspectMySQL(
 
       const idxMap = new Map<string, IntrospectedIndex>();
       for (const idx of idxRows as Array<Record<string, unknown>>) {
-        const name =
-          (idx.INDEX_NAME as string) ?? (idx.index_name as string);
+        const name = (idx.INDEX_NAME as string) ?? (idx.index_name as string);
         if (!idxMap.has(name)) {
           idxMap.set(name, {
             name,
             columns: [],
-            isUnique:
-              ((idx.NON_UNIQUE ?? idx.non_unique) as number) === 0,
+            isUnique: ((idx.NON_UNIQUE ?? idx.non_unique) as number) === 0,
             type:
-              ((idx.INDEX_TYPE as string) ?? (idx.index_type as string))?.toUpperCase() ?? 'BTREE',
+              (
+                (idx.INDEX_TYPE as string) ?? (idx.index_type as string)
+              )?.toUpperCase() ?? 'BTREE',
           });
         }
         idxMap.get(name)!.columns.push({
           columnName:
             (idx.COLUMN_NAME as string) ?? (idx.column_name as string),
           order:
-            ((idx.sort_order as string) ?? 'ASC') === 'DESC'
-              ? 'DESC'
-              : 'ASC',
+            ((idx.sort_order as string) ?? 'ASC') === 'DESC' ? 'DESC' : 'ASC',
         });
       }
 

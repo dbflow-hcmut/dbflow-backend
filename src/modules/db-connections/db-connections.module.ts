@@ -7,10 +7,7 @@ import { DbConnectionsService } from './db-connections.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([
-      DbConnectionEntity,
-      ProjectDbConnectionEntity,
-    ]),
+    TypeOrmModule.forFeature([DbConnectionEntity, ProjectDbConnectionEntity]),
   ],
   controllers: [DbConnectionsController],
   providers: [DbConnectionsService],

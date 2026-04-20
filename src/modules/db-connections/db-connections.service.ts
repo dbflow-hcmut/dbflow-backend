@@ -13,10 +13,7 @@ import { UpdateDbConnectionDto } from './dto/update-db-connection.dto';
 import { TestDbConnectionDto } from './dto/test-db-connection.dto';
 import { DbConnectionStatus } from '@/common/enums/db-connection.enum';
 import { encrypt, decrypt } from './utils/encryption.util';
-import {
-  testConnection,
-  ConnectParams,
-} from './utils/db-connector.factory';
+import { testConnection, ConnectParams } from './utils/db-connector.factory';
 import {
   introspectSchema,
   listSchemas,
@@ -50,9 +47,7 @@ export class DbConnectionsService {
       sshPort: dto.sshPort ?? null,
       sshUsername: dto.sshUsername ?? null,
       sshAuthType: dto.sshAuthType ?? null,
-      sshPasswordEncrypted: dto.sshPassword
-        ? encrypt(dto.sshPassword)
-        : null,
+      sshPasswordEncrypted: dto.sshPassword ? encrypt(dto.sshPassword) : null,
       sshPrivateKeyEncrypted: dto.sshPrivateKey
         ? encrypt(dto.sshPrivateKey)
         : null,
@@ -172,11 +167,7 @@ export class DbConnectionsService {
     return this.projectDbConnectionRepo.save(link);
   }
 
-  async unlinkFromProject(
-    userId: string,
-    projectId: string,
-    connId: string,
-  ) {
+  async unlinkFromProject(userId: string, projectId: string, connId: string) {
     const conn = await this.dbConnectionRepo.findOne({
       where: { id: connId },
     });
@@ -273,9 +264,7 @@ export class DbConnectionsService {
       port: conn.port,
       database: conn.database,
       username: conn.username,
-      password: conn.passwordEncrypted
-        ? decrypt(conn.passwordEncrypted)
-        : null,
+      password: conn.passwordEncrypted ? decrypt(conn.passwordEncrypted) : null,
       ssl: conn.ssl,
     };
   }

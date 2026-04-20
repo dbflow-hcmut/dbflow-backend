@@ -1,6 +1,8 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class CreateDbConnectionsTables1776500000000 implements MigrationInterface {
+export class CreateDbConnectionsTables1776500000000
+  implements MigrationInterface
+{
   readonly name = 'CreateDbConnectionsTables1776500000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
