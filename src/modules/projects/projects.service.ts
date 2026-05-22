@@ -1025,16 +1025,26 @@ export class ProjectsService {
 
     await this.s3Service.putJsonObject(modelS3Key, modelData);
 
-    // Delete the empty diagram template so that the frontend hook
-    // regenerates the diagram from the model (with auto-layout).
+    // Delete the diagram from S3 so the frontend hook regenerates it
+    // from the new model (with auto-layout) on next open.
     try {
       await this.s3Service.deleteFile(diagramS3Key);
     } catch {
       // Ignore errors — file may not exist
     }
 
+    // Invalidate the Yjs/Redis cache so the next connection reads the
+    // updated model from S3 instead of the stale cached Yjs document.
+    const redisKey = `diagram:${projectId}:${schemaId}`;
+    try {
+      await this.redisClient.del(redisKey);
+      logger.log(`Invalidated Redis cache for schema ${schemaId}: ${redisKey}`);
+    } catch (e) {
+      logger.warn(`Failed to invalidate Redis cache for ${schemaId}:`, e);
+    }
+
     logger.log(
-      `Saved AI-generated model for schema ${schemaId} to S3: ${modelS3Key}`,
+      `Saved model for schema ${schemaId} to S3: ${modelS3Key}`,
     );
 
     return { message: 'Model saved successfully' };
