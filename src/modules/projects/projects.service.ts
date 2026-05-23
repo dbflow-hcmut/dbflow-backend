@@ -1043,9 +1043,7 @@ export class ProjectsService {
       logger.warn(`Failed to invalidate Redis cache for ${schemaId}:`, e);
     }
 
-    logger.log(
-      `Saved model for schema ${schemaId} to S3: ${modelS3Key}`,
-    );
+    logger.log(`Saved model for schema ${schemaId} to S3: ${modelS3Key}`);
 
     return { message: 'Model saved successfully' };
   }

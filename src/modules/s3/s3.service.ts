@@ -30,7 +30,7 @@ export class S3Service {
   async uploadFile(
     file: Express.Multer.File,
     key: string,
-  ): Promise<{ key: string }> {
+  ): Promise<{ key: string; url: string }> {
     try {
       const command = new PutObjectCommand({
         Bucket: this.bucketName,
@@ -44,7 +44,8 @@ export class S3Service {
 
       this.logger.log(`File uploaded successfully: ${key}`);
 
-      return { key };
+      const url = await this.getPresignedUrl(key);
+      return { key, url };
     } catch (error) {
       this.logger.error(`Failed to upload file: ${error}`);
       throw error;
