@@ -11,9 +11,10 @@ import { ProjectDbConnectionEntity } from './entity/project-db-connection.entity
 import { CreateDbConnectionDto } from './dto/create-db-connection.dto';
 import { UpdateDbConnectionDto } from './dto/update-db-connection.dto';
 import { TestDbConnectionDto } from './dto/test-db-connection.dto';
+import { ExecuteQueryDto, QueryResultDto } from './dto/execute-query.dto';
 import { DbConnectionStatus } from '@/common/enums/db-connection.enum';
 import { encrypt, decrypt } from './utils/encryption.util';
-import { testConnection, ConnectParams } from './utils/db-connector.factory';
+import { testConnection, ConnectParams, executeQuery } from './utils/db-connector.factory';
 import {
   introspectSchema,
   listSchemas,
@@ -313,6 +314,39 @@ export class DbConnectionsService {
         : undefined,
       ssl: conn.ssl,
       schema,
+    });
+  }
+
+  // ─── Execute Query ────────────────────────────────────
+
+  async executeQuery(
+    userId: string,
+    connId: string,
+    dto: ExecuteQueryDto,
+  ): Promise<QueryResultDto> {
+    const conn = await this.dbConnectionRepo.findOne({
+      where: { id: connId },
+    });
+    if (!conn) throw new NotFoundException('Connection not found');
+    if (conn.createdBy !== userId)
+      throw new ForbiddenException('Not your connection');
+
+    const params: ConnectParams = {
+      dbms: conn.dbms,
+      method: conn.method,
+      host: conn.host,
+      port: conn.port ?? undefined,
+      database: conn.database,
+      username: conn.username ?? undefined,
+      password: conn.passwordEncrypted
+        ? decrypt(conn.passwordEncrypted)
+        : undefined,
+      ssl: conn.ssl,
+    };
+
+    return executeQuery(params, dto.query, dto.parameters, {
+      timeoutMs: dto.timeoutMs,
+      resultLimit: dto.resultLimit,
     });
   }
 

@@ -29,6 +29,150 @@ const DEFAULT_PORTS: Record<DbConnectionDbms, number> = {
 };
 
 const TIMEOUT_MS = 5000;
+const QUERY_TIMEOUT_MS = 30000;
+const DEFAULT_RESULT_LIMIT = 1000;
+
+export interface QueryResult {
+  success: boolean;
+  rowCount: number;
+  columns: string[];
+  rows: any[];
+  executionTimeMs: number;
+  message?: string;
+}
+
+export async function executeQuery(
+  params: ConnectParams,
+  query: string,
+  queryParams?: any[],
+  options?: { timeoutMs?: number; resultLimit?: number },
+): Promise<QueryResult> {
+  const start = Date.now();
+  const port = params.port ?? DEFAULT_PORTS[params.dbms];
+  const timeoutMs = options?.timeoutMs ?? QUERY_TIMEOUT_MS;
+  const resultLimit = options?.resultLimit ?? DEFAULT_RESULT_LIMIT;
+
+  try {
+    switch (params.dbms) {
+      case DbConnectionDbms.PostgreSQL:
+        return await executePostgres(params, port, query, queryParams, timeoutMs, resultLimit);
+      case DbConnectionDbms.MySQL:
+        return await executeMySQL(params, port, query, queryParams, timeoutMs, resultLimit);
+      case DbConnectionDbms.SQLServer:
+        return {
+          success: false,
+          rowCount: 0,
+          columns: [],
+          rows: [],
+          executionTimeMs: Date.now() - start,
+          message: 'SQL Server driver (mssql) is not installed. Install it with: npm install mssql',
+        };
+      default:
+        return {
+          success: false,
+          rowCount: 0,
+          columns: [],
+          rows: [],
+          executionTimeMs: Date.now() - start,
+          message: `Unsupported DBMS: ${params.dbms as string}`,
+        };
+    }
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    return {
+      success: false,
+      rowCount: 0,
+      columns: [],
+      rows: [],
+      executionTimeMs: Date.now() - start,
+      message: msg,
+    };
+  }
+}
+
+async function executePostgres(
+  params: ConnectParams,
+  port: number,
+  query: string,
+  queryParams: any[] | undefined,
+  timeoutMs: number,
+  resultLimit: number,
+): Promise<QueryResult> {
+  const client = new PgClient({
+    host: params.host,
+    port,
+    database: params.database,
+    user: params.username,
+    password: params.password,
+    ssl: params.ssl ? { rejectUnauthorized: false } : false,
+    connectionTimeoutMillis: timeoutMs,
+    statement_timeout: timeoutMs,
+  });
+
+  try {
+    await client.connect();
+
+    // Append LIMIT clause if query doesn't have one and it's a SELECT
+    const upperQuery = query.toUpperCase().trim();
+    let finalQuery = query;
+    if (upperQuery.startsWith('SELECT') && !upperQuery.includes('LIMIT')) {
+      finalQuery = query.trimEnd().replace(/;$/, '') + ` LIMIT ${resultLimit};`;
+    }
+
+    const result = await client.query(finalQuery, queryParams);
+
+    return {
+      success: true,
+      rowCount: result.rows.length,
+      columns: result.fields.map(f => f.name),
+      rows: result.rows,
+      executionTimeMs: 0,
+    };
+  } finally {
+    await client.end().catch(() => {});
+  }
+}
+
+async function executeMySQL(
+  params: ConnectParams,
+  port: number,
+  query: string,
+  queryParams: any[] | undefined,
+  timeoutMs: number,
+  resultLimit: number,
+): Promise<QueryResult> {
+  const mysql = await import('mysql2/promise');
+  const connection = await mysql.createConnection({
+    host: params.host,
+    port,
+    database: params.database,
+    user: params.username,
+    password: params.password,
+    ssl: params.ssl ? {} : undefined,
+    connectTimeout: timeoutMs,
+  });
+
+  try {
+    // Append LIMIT clause if query doesn't have one and it's a SELECT
+    const upperQuery = query.toUpperCase().trim();
+    let finalQuery = query;
+    if (upperQuery.startsWith('SELECT') && !upperQuery.includes('LIMIT')) {
+      finalQuery = query.trimEnd().replace(/;$/, '') + ` LIMIT ${resultLimit};`;
+    }
+
+    const [rows, fields] = await connection.query(finalQuery, queryParams);
+
+    return {
+      success: true,
+      rowCount: Array.isArray(rows) ? rows.length : 0,
+      columns: Array.isArray(fields) ? fields.map(f => f.name) : [],
+      rows: Array.isArray(rows) ? rows : [],
+      executionTimeMs: 0,
+    };
+  } finally {
+    await connection.end().catch(() => {});
+  }
+}
 
 export async function testConnection(
   params: ConnectParams,

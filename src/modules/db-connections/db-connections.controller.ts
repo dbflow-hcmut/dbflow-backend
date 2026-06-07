@@ -25,6 +25,7 @@ import { DbConnectionsService } from './db-connections.service';
 import { CreateDbConnectionDto } from './dto/create-db-connection.dto';
 import { UpdateDbConnectionDto } from './dto/update-db-connection.dto';
 import { TestDbConnectionDto } from './dto/test-db-connection.dto';
+import { ExecuteQueryDto } from './dto/execute-query.dto';
 import { LinkDbConnectionDto } from './dto/link-db-connection.dto';
 
 @ApiTags('DB Connections')
@@ -135,6 +136,17 @@ export class DbConnectionsController {
     @Query('schema') schema?: string,
   ) {
     return this.service.introspect(req.user.id, connId, schema);
+  }
+
+  @Post('db-connections/:connId/execute')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Execute a query against a saved connection' })
+  async executeQuery(
+    @Req() req: AuthenticatedRequest,
+    @Param('connId') connId: string,
+    @Body(new ValidationPipe({ whitelist: true })) dto: ExecuteQueryDto,
+  ) {
+    return this.service.executeQuery(req.user.id, connId, dto);
   }
 
   // ─── Project linking ──────────────────────────────────
