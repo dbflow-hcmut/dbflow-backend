@@ -22,7 +22,10 @@ import {
   ApiQuery,
 } from '@nestjs/swagger';
 import { S3Service } from './s3.service';
-import { UploadFileDto, UploadResponseDto } from './dto/upload.dto';
+import {
+  UploadFileDto,
+  UploadResponseDto,
+} from './dto/upload.dto';
 import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
 
 @ApiTags('s3')
@@ -64,7 +67,7 @@ export class S3Controller {
   async uploadFile(
     @UploadedFile() file: Express.Multer.File,
     @Body() dto: UploadFileDto,
-  ): Promise<{ key: string }> {
+  ): Promise<UploadResponseDto> {
     if (!file) {
       throw new BadRequestException('No file provided');
     }
