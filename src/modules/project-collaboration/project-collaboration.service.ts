@@ -244,11 +244,13 @@ export class ProjectCollaborationService
 
       // eslint-disable-next-line @typescript-eslint/require-await
       async onChange(data) {
-        const { document, documentName, requestParameters, context } = data;
+        const { document, documentName, requestParameters } = data;
+        const changeContext = data as {
+          context?: { user?: { id?: string } };
+        };
         const projectId = requestParameters?.get('projectId');
         const schemaId = documentName;
-        const userId = (context as { user?: { id?: string } } | undefined)
-          ?.user?.id;
+        const userId = changeContext.context?.user?.id;
 
         if (
           !projectId ||
@@ -439,9 +441,7 @@ export class ProjectCollaborationService
 
   private buildAutoVersionSignature(ydoc: Y.Doc): string | null {
     const modelStr = ydoc.getMap('model').get('data') as string | undefined;
-    const diagramStr = ydoc.getMap('diagram').get('data') as
-      | string
-      | undefined;
+    const diagramStr = ydoc.getMap('diagram').get('data') as string | undefined;
 
     if (!modelStr) {
       return null;
@@ -516,7 +516,12 @@ export class ProjectCollaborationService
         buildAutoVersionLabel(),
       );
       await this.redisClient.set(signatureKey, signature, 'EX', 30 * 24 * 3600);
-      await this.redisClient.set(lastAtKey, now.toString(), 'EX', 30 * 24 * 3600);
+      await this.redisClient.set(
+        lastAtKey,
+        now.toString(),
+        'EX',
+        30 * 24 * 3600,
+      );
       logger.log(`Created auto version for schema ${schemaId}`);
     } catch (error) {
       logger.error(`Failed to create auto version for ${schemaId}`, error);

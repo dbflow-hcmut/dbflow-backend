@@ -55,9 +55,23 @@ export async function executeQuery(
   try {
     switch (params.dbms) {
       case DbConnectionDbms.PostgreSQL:
-        return await executePostgres(params, port, query, queryParams, timeoutMs, resultLimit);
+        return await executePostgres(
+          params,
+          port,
+          query,
+          queryParams,
+          timeoutMs,
+          resultLimit,
+        );
       case DbConnectionDbms.MySQL:
-        return await executeMySQL(params, port, query, queryParams, timeoutMs, resultLimit);
+        return await executeMySQL(
+          params,
+          port,
+          query,
+          queryParams,
+          timeoutMs,
+          resultLimit,
+        );
       case DbConnectionDbms.SQLServer:
         return {
           success: false,
@@ -65,7 +79,8 @@ export async function executeQuery(
           columns: [],
           rows: [],
           executionTimeMs: Date.now() - start,
-          message: 'SQL Server driver (mssql) is not installed. Install it with: npm install mssql',
+          message:
+            'SQL Server driver (mssql) is not installed. Install it with: npm install mssql',
         };
       default:
         return {
@@ -124,7 +139,7 @@ async function executePostgres(
     return {
       success: true,
       rowCount: result.rows.length,
-      columns: result.fields.map(f => f.name),
+      columns: result.fields.map((f) => f.name),
       rows: result.rows,
       executionTimeMs: 0,
     };
@@ -165,7 +180,7 @@ async function executeMySQL(
     return {
       success: true,
       rowCount: Array.isArray(rows) ? rows.length : 0,
-      columns: Array.isArray(fields) ? fields.map(f => f.name) : [],
+      columns: Array.isArray(fields) ? fields.map((f) => f.name) : [],
       rows: Array.isArray(rows) ? rows : [],
       executionTimeMs: 0,
     };

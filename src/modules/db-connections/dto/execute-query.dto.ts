@@ -40,4 +40,3 @@ export class QueryResultDto {
   executionTimeMs: number;
   message?: string;
 }
-

@@ -22,10 +22,7 @@ import {
   ApiQuery,
 } from '@nestjs/swagger';
 import { S3Service } from './s3.service';
-import {
-  UploadFileDto,
-  UploadResponseDto,
-} from './dto/upload.dto';
+import { UploadFileDto, UploadResponseDto } from './dto/upload.dto';
 import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
 
 @ApiTags('s3')
