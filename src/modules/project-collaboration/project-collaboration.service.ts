@@ -16,9 +16,17 @@ import { JwtService } from '@nestjs/jwt';
 import { ProjectsService } from '../projects/projects.service';
 import { S3Service } from '../s3/s3.service';
 import * as Y from 'yjs';
+import { createHash } from 'crypto';
 
 const logger = new Logger('ProjectCollaborationService');
 const S3_SYNC_INTERVAL_MS = 60000;
+const AUTO_VERSION_DEBOUNCE_MS = 2 * 60 * 1000;
+const AUTO_VERSION_MIN_INTERVAL_MS = 5 * 60 * 1000;
+
+function buildAutoVersionLabel(date = new Date()): string {
+  const timestamp = date.toISOString().slice(0, 19).replace('T', ' ');
+  return `Auto save ${timestamp}`;
+}
 
 interface JwtPayload {
   sub: string;
@@ -42,6 +50,7 @@ export class ProjectCollaborationService
   private webSocketServer?: WebSocketServer;
   private emitDebouncers = new Map<string, NodeJS.Timeout>();
   private fileWriteDebouncers = new Map<string, NodeJS.Timeout>();
+  private autoVersionDebouncers = new Map<string, NodeJS.Timeout>();
 
   constructor(
     @Inject('REDIS_CLIENT') private readonly redisClient: Redis,
@@ -59,6 +68,7 @@ export class ProjectCollaborationService
     const projectsService = this.projectsService;
     const s3Service = this.s3Service;
     const trySyncToS3 = this.trySyncToS3.bind(this);
+    const scheduleAutoVersion = this.scheduleAutoVersion.bind(this);
     const changeDebouncers = new Map<string, NodeJS.Timeout>();
     const fileWriteDebouncers = this.fileWriteDebouncers;
 
@@ -234,9 +244,11 @@ export class ProjectCollaborationService
 
       // eslint-disable-next-line @typescript-eslint/require-await
       async onChange(data) {
-        const { document, documentName, requestParameters } = data;
+        const { document, documentName, requestParameters, context } = data;
         const projectId = requestParameters?.get('projectId');
         const schemaId = documentName;
+        const userId = (context as { user?: { id?: string } } | undefined)
+          ?.user?.id;
 
         if (
           !projectId ||
@@ -279,6 +291,10 @@ export class ProjectCollaborationService
                 3600,
               );
               logger.log(`onChange synced to Redis: ${redisKey}`);
+
+              if (userId) {
+                scheduleAutoVersion(ydoc, projectId, schemaId, userId);
+              }
 
               await redis.del(syncLockKey);
 
@@ -386,6 +402,8 @@ export class ProjectCollaborationService
     this.emitDebouncers.clear();
     this.fileWriteDebouncers.forEach((timeout) => clearTimeout(timeout));
     this.fileWriteDebouncers.clear();
+    this.autoVersionDebouncers.forEach((timeout) => clearTimeout(timeout));
+    this.autoVersionDebouncers.clear();
 
     if (this.webSocketServer) {
       this.webSocketServer.close();
@@ -397,6 +415,114 @@ export class ProjectCollaborationService
     }
 
     logger.log('Project Collaboration server stopped');
+  }
+
+  private scheduleAutoVersion(
+    ydoc: Y.Doc,
+    projectId: string,
+    schemaId: string,
+    userId: string,
+    delay = AUTO_VERSION_DEBOUNCE_MS,
+  ) {
+    const key = `autoVersion:diagram:${projectId}:${schemaId}`;
+    const existing = this.autoVersionDebouncers.get(key);
+    if (existing) {
+      clearTimeout(existing);
+    }
+
+    const timeout = setTimeout(() => {
+      void this.createAutoVersionIfNeeded(ydoc, projectId, schemaId, userId);
+    }, delay);
+
+    this.autoVersionDebouncers.set(key, timeout);
+  }
+
+  private buildAutoVersionSignature(ydoc: Y.Doc): string | null {
+    const modelStr = ydoc.getMap('model').get('data') as string | undefined;
+    const diagramStr = ydoc.getMap('diagram').get('data') as
+      | string
+      | undefined;
+
+    if (!modelStr) {
+      return null;
+    }
+
+    return createHash('sha256')
+      .update(modelStr)
+      .update('\n---diagram---\n')
+      .update(diagramStr ?? '')
+      .digest('hex');
+  }
+
+  private async createAutoVersionIfNeeded(
+    ydoc: Y.Doc,
+    projectId: string,
+    schemaId: string,
+    userId: string,
+  ) {
+    const baseKey = `autoVersion:diagram:${projectId}:${schemaId}`;
+    const lockKey = `${baseKey}:lock`;
+    const signatureKey = `${baseKey}:signature`;
+    const lastAtKey = `${baseKey}:lastAt`;
+
+    this.autoVersionDebouncers.delete(baseKey);
+
+    const lockAcquired = await this.redisClient.set(
+      lockKey,
+      '1',
+      'EX',
+      60,
+      'NX',
+    );
+
+    if (!lockAcquired) {
+      logger.log(`Skipped auto version - already in progress: ${schemaId}`);
+      return;
+    }
+
+    try {
+      const signature = this.buildAutoVersionSignature(ydoc);
+      if (!signature) {
+        logger.warn(
+          `Skipped auto version - no model data available: ${schemaId}`,
+        );
+        return;
+      }
+
+      const lastSignature = await this.redisClient.get(signatureKey);
+      if (lastSignature === signature) {
+        logger.log(`Skipped auto version - no semantic change: ${schemaId}`);
+        return;
+      }
+
+      const now = Date.now();
+      const lastAtRaw = await this.redisClient.get(lastAtKey);
+      const lastAt = lastAtRaw ? Number.parseInt(lastAtRaw, 10) : 0;
+      const elapsed = lastAt ? now - lastAt : AUTO_VERSION_MIN_INTERVAL_MS;
+
+      if (elapsed < AUTO_VERSION_MIN_INTERVAL_MS) {
+        const remaining = AUTO_VERSION_MIN_INTERVAL_MS - elapsed;
+        this.scheduleAutoVersion(ydoc, projectId, schemaId, userId, remaining);
+        logger.log(
+          `Delayed auto version for ${schemaId} by ${remaining}ms due to interval limit`,
+        );
+        return;
+      }
+
+      await this.projectsService.createSchemaVersion(
+        userId,
+        projectId,
+        schemaId,
+        buildAutoVersionLabel(),
+      );
+      await this.redisClient.set(signatureKey, signature, 'EX', 30 * 24 * 3600);
+      await this.redisClient.set(lastAtKey, now.toString(), 'EX', 30 * 24 * 3600);
+      logger.log(`Created auto version for schema ${schemaId}`);
+    } catch (error) {
+      logger.error(`Failed to create auto version for ${schemaId}`, error);
+    } finally {
+      await this.redisClient.del(lockKey);
+    }
   }
 
   private async trySyncToS3(ydoc: Y.Doc, projectId: string, schemaId: string) {
