@@ -7,6 +7,7 @@ import {
   UseInterceptors,
   UseGuards,
   BadRequestException,
+  ForbiddenException,
   StreamableFile,
   Query,
 } from '@nestjs/common';
@@ -22,8 +23,19 @@ import {
   ApiQuery,
 } from '@nestjs/swagger';
 import { S3Service } from './s3.service';
-import { UploadFileDto, UploadResponseDto } from './dto/upload.dto';
+import {
+  PresignedUploadDto,
+  UploadFileDto,
+  UploadResponseDto,
+} from './dto/upload.dto';
 import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
+import { randomUUID } from 'crypto';
+
+const MAX_AI_ATTACHMENT_SIZE = 25 * 1024 * 1024;
+
+function sanitizeFileName(fileName: string): string {
+  return fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+}
 
 @ApiTags('s3')
 @Controller('s3')
@@ -74,6 +86,28 @@ export class S3Controller {
     }
 
     return this.s3Service.uploadFile(file, dto.key);
+  }
+
+  @Post('presigned-ai-attachment')
+  @UseGuards(JwtAuthGuard)
+  @ApiCookieAuth()
+  @ApiOperation({
+    summary: 'Create presigned upload URL for AI chat attachment',
+  })
+  async createAiAttachmentPresignedUpload(
+    @Body() dto: PresignedUploadDto,
+  ): Promise<{ key: string; uploadUrl: string; url: string }> {
+    if (!Number.isFinite(dto.size) || dto.size <= 0) {
+      throw new BadRequestException('Invalid file size');
+    }
+    if (dto.size > MAX_AI_ATTACHMENT_SIZE) {
+      throw new ForbiddenException('File is too large');
+    }
+
+    const attachmentId = randomUUID();
+    const safeName = sanitizeFileName(dto.fileName);
+    const key = `ai-attachments/${attachmentId}/${Date.now()}-${safeName}`;
+    return this.s3Service.getPresignedUploadUrl(key, dto.mimeType);
   }
 
   @Get('file')

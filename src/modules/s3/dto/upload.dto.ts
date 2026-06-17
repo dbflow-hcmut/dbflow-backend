@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsString } from 'class-validator';
+import { IsNotEmpty, IsNumber, IsString, MaxLength } from 'class-validator';
 
 export class UploadFileDto {
   @ApiProperty({
@@ -23,4 +23,31 @@ export class UploadResponseDto {
     example: 'uploads/images/profile-123.jpg',
   })
   key: string;
+}
+
+export class PresignedUploadDto {
+  @ApiProperty({
+    description: 'Original file name',
+    example: 'schema.pdf',
+  })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(255)
+  fileName: string;
+
+  @ApiProperty({
+    description: 'MIME type',
+    example: 'application/pdf',
+  })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(120)
+  mimeType: string;
+
+  @ApiProperty({
+    description: 'File size in bytes',
+    example: 1024,
+  })
+  @IsNumber()
+  size: number;
 }

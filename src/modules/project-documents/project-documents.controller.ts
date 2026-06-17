@@ -24,6 +24,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
 import { AuthenticatedRequest } from '@/common/types/request.type';
 import { S3Service } from '@/modules/s3/s3.service';
+import { PresignedUploadDto } from '@/modules/s3/dto/upload.dto';
 import { ProjectDocumentsService } from './project-documents.service';
 import {
   CreateProjectDocumentDto,
@@ -94,6 +95,25 @@ export class ProjectDocumentsController {
     const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
     const key = `projects/${projectId}/documents/${Date.now()}-${safeName}`;
     return this.s3Service.uploadFile(file, key);
+  }
+
+  @Post('presigned-upload')
+  @ApiOperation({ summary: 'Create presigned upload URL for a project document' })
+  async createPresignedUpload(
+    @Req() req: AuthenticatedRequest,
+    @Param('projectId') projectId: string,
+    @Body() dto: PresignedUploadDto,
+  ) {
+    await this.projectDocumentsService.assertCanUpload(
+      req.user.id,
+      projectId,
+      dto.mimeType,
+      dto.size,
+    );
+
+    const safeName = dto.fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const key = `projects/${projectId}/documents/${Date.now()}-${safeName}`;
+    return this.s3Service.getPresignedUploadUrl(key, dto.mimeType);
   }
 
   @Get(':documentId')

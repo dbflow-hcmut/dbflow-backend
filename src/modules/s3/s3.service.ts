@@ -52,6 +52,29 @@ export class S3Service {
     }
   }
 
+  async getPresignedUploadUrl(
+    key: string,
+    contentType: string,
+    expiresIn = 900,
+  ): Promise<{ key: string; uploadUrl: string; url: string }> {
+    try {
+      const command = new PutObjectCommand({
+        Bucket: this.bucketName,
+        Key: key,
+        ContentType: contentType,
+      });
+
+      const uploadUrl = await getSignedUrl(this.s3Client, command, {
+        expiresIn,
+      });
+      const url = await this.getPresignedUrl(key);
+      return { key, uploadUrl, url };
+    } catch (error) {
+      this.logger.error(`Failed to generate presigned upload URL: ${error}`);
+      throw error;
+    }
+  }
+
   async deleteFile(key: string): Promise<void> {
     try {
       const command = new DeleteObjectCommand({
