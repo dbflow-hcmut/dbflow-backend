@@ -10,6 +10,7 @@ import { ProjectsModule } from './modules/projects/projects.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { CommentsModule } from './modules/comments/comments.module';
 import { DbConnectionsModule } from './modules/db-connections/db-connections.module';
+import { ProjectDocumentsModule } from './modules/project-documents/project-documents.module';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { DbConnectionsModule } from './modules/db-connections/db-connections.mod
     ChatModule,
     CommentsModule,
     DbConnectionsModule,
+    ProjectDocumentsModule,
   ],
   controllers: [],
   providers: [],

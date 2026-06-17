@@ -139,6 +139,7 @@ export class ProjectsService {
       },
       createdAt: project.createdAt,
       updatedAt: project.updatedAt,
+      visibility: project.visibility,
       status: 'active',
     };
   }
