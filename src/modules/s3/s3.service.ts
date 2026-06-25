@@ -56,6 +56,7 @@ export class S3Service {
     key: string,
     contentType: string,
     expiresIn = 900,
+    readExpiresIn = 3600,
   ): Promise<{ key: string; uploadUrl: string; url: string }> {
     try {
       const command = new PutObjectCommand({
@@ -67,7 +68,7 @@ export class S3Service {
       const uploadUrl = await getSignedUrl(this.s3Client, command, {
         expiresIn,
       });
-      const url = await this.getPresignedUrl(key);
+      const url = await this.getPresignedUrl(key, readExpiresIn);
       return { key, uploadUrl, url };
     } catch (error) {
       this.logger.error(`Failed to generate presigned upload URL: ${error}`);

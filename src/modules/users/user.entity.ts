@@ -1,4 +1,5 @@
 import { Role } from '@/common/enums/role.enum';
+import { Exclude } from 'class-transformer';
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -32,6 +33,7 @@ export class UserEntity {
   @Column({ type: 'text', nullable: true })
   bio: string;
 
+  @Exclude()
   @Column({ type: 'varchar', length: 255, nullable: false })
   password: string;
 

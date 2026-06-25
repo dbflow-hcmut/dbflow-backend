@@ -98,7 +98,9 @@ export class ProjectDocumentsController {
   }
 
   @Post('presigned-upload')
-  @ApiOperation({ summary: 'Create presigned upload URL for a project document' })
+  @ApiOperation({
+    summary: 'Create presigned upload URL for a project document',
+  })
   async createPresignedUpload(
     @Req() req: AuthenticatedRequest,
     @Param('projectId') projectId: string,
@@ -154,6 +156,22 @@ export class ProjectDocumentsController {
     @Param('documentId') documentId: string,
   ) {
     return this.projectDocumentsService.remove(
+      req.user.id,
+      projectId,
+      documentId,
+    );
+  }
+
+  @Post(':documentId/retry-ingest')
+  @ApiOperation({
+    summary: 'Retry AI ingestion for a failed or queued document',
+  })
+  async retryIngest(
+    @Req() req: AuthenticatedRequest,
+    @Param('projectId') projectId: string,
+    @Param('documentId') documentId: string,
+  ) {
+    return this.projectDocumentsService.retryIngest(
       req.user.id,
       projectId,
       documentId,

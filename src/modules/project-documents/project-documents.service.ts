@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ILike, Repository } from 'typeorm';
+import { AiIngestionService } from '@/modules/ai-ingestion/ai-ingestion.service';
 import { ProjectsService } from '@/modules/projects/projects.service';
 import { S3Service } from '@/modules/s3/s3.service';
 import {
@@ -42,6 +43,7 @@ export class ProjectDocumentsService {
     private readonly documentsRepo: Repository<ProjectDocumentEntity>,
     private readonly projectsService: ProjectsService,
     private readonly s3Service: S3Service,
+    private readonly aiIngestion: AiIngestionService,
   ) {}
 
   async findAll(
@@ -86,10 +88,35 @@ export class ProjectDocumentsService {
       mimeType: dto.mimeType,
       size: dto.size,
       source: dto.source ?? ProjectDocumentSource.HubUpload,
-      status: ProjectDocumentStatus.Ready,
+      status: ProjectDocumentStatus.Uploaded,
     });
 
-    return this.documentsRepo.save(document);
+    const saved = await this.documentsRepo.save(document);
+    this.runIngestion(saved).catch(() => undefined);
+    return saved;
+  }
+
+  private async runIngestion(doc: ProjectDocumentEntity): Promise<void> {
+    await this.documentsRepo.update(doc.id, {
+      status: ProjectDocumentStatus.Processing,
+    });
+    try {
+      await this.aiIngestion.ingestDocument({
+        documentId: doc.id,
+        projectId: doc.projectId,
+        s3Key: doc.s3Key,
+        mimeType: doc.mimeType,
+        fileName: doc.fileName,
+        title: doc.title,
+      });
+      await this.documentsRepo.update(doc.id, {
+        status: ProjectDocumentStatus.Ready,
+      });
+    } catch {
+      await this.documentsRepo.update(doc.id, {
+        status: ProjectDocumentStatus.Failed,
+      });
+    }
   }
 
   async assertCanUpload(
@@ -132,8 +159,26 @@ export class ProjectDocumentsService {
     const document = await this.findOne(userId, projectId, documentId);
 
     await this.documentsRepo.remove(document);
-    await this.s3Service.deleteFile(document.s3Key).catch(() => undefined);
+    await Promise.allSettled([
+      this.s3Service.deleteFile(document.s3Key),
+      this.aiIngestion.removeDocument(document.id, document.projectId),
+    ]);
     return { success: true };
+  }
+
+  async retryIngest(userId: string, projectId: string, documentId: string) {
+    await this.projectsService.checkWritePermission(userId, projectId);
+    const document = await this.findOne(userId, projectId, documentId);
+
+    if (document.status === ProjectDocumentStatus.Processing) {
+      return document;
+    }
+
+    this.runIngestion(document).catch(() => undefined);
+    return this.documentsRepo.findOne({
+      where: { id: documentId },
+      relations: ['uploader'],
+    });
   }
 
   async getDownloadUrl(userId: string, projectId: string, documentId: string) {

@@ -107,7 +107,7 @@ export class S3Controller {
     const attachmentId = randomUUID();
     const safeName = sanitizeFileName(dto.fileName);
     const key = `ai-attachments/${attachmentId}/${Date.now()}-${safeName}`;
-    return this.s3Service.getPresignedUploadUrl(key, dto.mimeType);
+    return this.s3Service.getPresignedUploadUrl(key, dto.mimeType, 900, 604800);
   }
 
   @Get('file')
