@@ -24,6 +24,10 @@ import {
   listSchemas,
   IntrospectedTable,
 } from './utils/introspect.util';
+import {
+  checkPermissions,
+  PermissionMatrix,
+} from './utils/permissions.util';
 
 @Injectable()
 export class DbConnectionsService {
@@ -352,6 +356,33 @@ export class DbConnectionsService {
       timeoutMs: dto.timeoutMs,
       resultLimit: dto.resultLimit,
     });
+  }
+
+  // ─── Permissions ─────────────────────────────────────
+
+  async checkPermissions(
+    userId: string,
+    connId: string,
+  ): Promise<PermissionMatrix> {
+    const conn = await this.dbConnectionRepo.findOne({ where: { id: connId } });
+    if (!conn) throw new NotFoundException('Connection not found');
+    if (conn.createdBy !== userId)
+      throw new ForbiddenException('Not your connection');
+
+    const params: ConnectParams = {
+      dbms: conn.dbms,
+      method: conn.method,
+      host: conn.host,
+      port: conn.port ?? undefined,
+      database: conn.database,
+      username: conn.username ?? undefined,
+      password: conn.passwordEncrypted
+        ? decrypt(conn.passwordEncrypted)
+        : undefined,
+      ssl: conn.ssl,
+    };
+
+    return checkPermissions(params);
   }
 
   // ─── Helpers ──────────────────────────────────────────

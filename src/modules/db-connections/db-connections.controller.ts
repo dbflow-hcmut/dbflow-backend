@@ -149,6 +149,18 @@ export class DbConnectionsController {
     return this.service.executeQuery(req.user.id, connId, dto);
   }
 
+  // ─── Permissions ─────────────────────────────────────
+
+  @Post('db-connections/:connId/permissions')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Check permissions of the connected DB user' })
+  async checkPermissions(
+    @Req() req: AuthenticatedRequest,
+    @Param('connId') connId: string,
+  ) {
+    return this.service.checkPermissions(req.user.id, connId);
+  }
+
   // ─── Project linking ──────────────────────────────────
 
   @Get('projects/:projectId/db-connections')

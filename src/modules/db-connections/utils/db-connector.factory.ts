@@ -123,6 +123,7 @@ async function executePostgres(
     connectionTimeoutMillis: timeoutMs,
     statement_timeout: timeoutMs,
   });
+  client.on('error', () => {});
 
   try {
     await client.connect();
@@ -241,6 +242,7 @@ async function testPostgres(params: ConnectParams, port: number) {
     ssl: params.ssl ? { rejectUnauthorized: false } : false,
     connectionTimeoutMillis: TIMEOUT_MS,
   });
+  client.on('error', () => {});
 
   try {
     await client.connect();
