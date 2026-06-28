@@ -1,0 +1,45 @@
+name: Migrate
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Migration action"
+        required: true
+        default: "run"
+        type: choice
+        options:
+          - run
+          - revert
+          - show
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy migration over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT || '22' }}
+          script_stop: true
+          script: |
+            set -euo pipefail
+
+            WORK_DIR="$HOME/dbflow"
+            ACTION="${{ github.event.inputs.action }}"
+
+            echo "==> Moving to $WORK_DIR"
+            cd "$WORK_DIR"
+
+            echo "==> Running migration: $ACTION"
+            docker compose -f docker-compose.prod.yml exec -T backend \
+              yarn migration:$ACTION
+
+            echo "Migration '$ACTION' completed successfully!"
