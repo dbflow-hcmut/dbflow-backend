@@ -135,14 +135,21 @@ async function executePostgres(
       finalQuery = query.trimEnd().replace(/;$/, '') + ` LIMIT ${resultLimit};`;
     }
 
-    const result = await client.query(finalQuery, queryParams);
+    const queryStart = Date.now();
+    const rawResult = await client.query(finalQuery, queryParams);
+    const executionTimeMs = Date.now() - queryStart;
+
+    // pg returns QueryResult[] for multi-statement queries (e.g. SET search_path + SELECT)
+    const result = Array.isArray(rawResult)
+      ? rawResult[rawResult.length - 1]
+      : rawResult;
 
     return {
       success: true,
       rowCount: result.rows.length,
-      columns: result.fields.map((f) => f.name),
+      columns: result.fields.map((f: { name: string }) => f.name),
       rows: result.rows,
-      executionTimeMs: 0,
+      executionTimeMs,
     };
   } finally {
     await client.end().catch(() => {});
@@ -176,14 +183,16 @@ async function executeMySQL(
       finalQuery = query.trimEnd().replace(/;$/, '') + ` LIMIT ${resultLimit};`;
     }
 
+    const queryStart = Date.now();
     const [rows, fields] = await connection.query(finalQuery, queryParams);
+    const executionTimeMs = Date.now() - queryStart;
 
     return {
       success: true,
       rowCount: Array.isArray(rows) ? rows.length : 0,
       columns: Array.isArray(fields) ? fields.map((f) => f.name) : [],
       rows: Array.isArray(rows) ? rows : [],
-      executionTimeMs: 0,
+      executionTimeMs,
     };
   } finally {
     await connection.end().catch(() => {});

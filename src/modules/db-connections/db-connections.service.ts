@@ -28,6 +28,11 @@ import {
   checkPermissions,
   PermissionMatrix,
 } from './utils/permissions.util';
+import {
+  AiIngestionService,
+  GenerateSqlPayload,
+} from '../ai-ingestion/ai-ingestion.service';
+import { GenerateSqlDto } from './dto/generate-sql.dto';
 
 @Injectable()
 export class DbConnectionsService {
@@ -36,6 +41,7 @@ export class DbConnectionsService {
     private readonly dbConnectionRepo: Repository<DbConnectionEntity>,
     @InjectRepository(ProjectDbConnectionEntity)
     private readonly projectDbConnectionRepo: Repository<ProjectDbConnectionEntity>,
+    private readonly aiIngestionService: AiIngestionService,
   ) {}
 
   // ─── CRUD ──────────────────────────────────────────────
@@ -323,6 +329,43 @@ export class DbConnectionsService {
       ssl: conn.ssl,
       schema,
     });
+  }
+
+  // ─── AI Text-to-SQL ───────────────────────────────────
+
+  async generateSql(
+    userId: string,
+    connId: string,
+    dto: GenerateSqlDto,
+  ): Promise<{ sql: string }> {
+    const conn = await this.dbConnectionRepo.findOne({
+      where: { id: connId },
+    });
+    if (!conn) throw new NotFoundException('Connection not found');
+    if (conn.createdBy !== userId)
+      throw new ForbiddenException('Not your connection');
+
+    const schemaTables = await introspectSchema({
+      dbms: conn.dbms,
+      host: conn.host,
+      port: conn.port ?? undefined,
+      database: conn.database,
+      username: conn.username ?? undefined,
+      password: conn.passwordEncrypted
+        ? decrypt(conn.passwordEncrypted)
+        : undefined,
+      ssl: conn.ssl,
+      schema: dto.schema,
+    });
+
+    const payload: GenerateSqlPayload = {
+      nl_query: dto.nl_query,
+      dbms: conn.dbms,
+      schema_tables: schemaTables,
+      project_id: dto.project_id,
+    };
+
+    return this.aiIngestionService.generateSql(payload);
   }
 
   // ─── Execute Query ────────────────────────────────────
