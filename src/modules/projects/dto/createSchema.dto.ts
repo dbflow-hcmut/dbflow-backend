@@ -1,5 +1,12 @@
-import { IsNotEmpty, IsString, MaxLength, IsEnum } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import {
+  IsNotEmpty,
+  IsString,
+  MaxLength,
+  IsEnum,
+  IsOptional,
+  IsIn,
+} from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { SchemaType } from '@/common/enums/schema-type.enum';
 
 export class CreateSchemaDto {
@@ -13,4 +20,12 @@ export class CreateSchemaDto {
   @IsEnum(SchemaType)
   @IsNotEmpty()
   type: SchemaType;
+
+  @ApiPropertyOptional({
+    example: 'postgresql',
+    enum: ['postgresql', 'mysql', 'sqlserver'],
+  })
+  @IsOptional()
+  @IsIn(['postgresql', 'mysql', 'sqlserver'])
+  dbms?: string;
 }

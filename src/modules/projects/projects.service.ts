@@ -292,10 +292,19 @@ export class ProjectsService {
     projectId: string,
     schemaId: string,
     schemaName: string,
+    schemaType: SchemaType,
+    dbms?: string,
   ) {
+    const prefixMap: Record<SchemaType, string> = {
+      [SchemaType.Conceptual]: 'cid',
+      [SchemaType.Logical]: 'lid',
+      [SchemaType.Physical]: 'pid',
+    };
+    const prefix = prefixMap[schemaType] || 'cid';
+
     const diagramTemplate = {
       diagram: {
-        id: `cid_diagram_${schemaId}`,
+        id: `${prefix}_diagram_${schemaId}`,
         name: schemaName,
         viewport: {
           x: 0,
@@ -309,27 +318,64 @@ export class ProjectsService {
       },
     };
 
-    const modelTemplate = {
-      model: {
-        id: `cid_model_${schemaId}`,
-        name: schemaName,
-        version: 1,
+    let modelTemplate: Record<string, unknown>;
+
+    if (schemaType === SchemaType.Conceptual) {
+      modelTemplate = {
+        model: {
+          id: `${prefix}_model_${schemaId}`,
+          name: schemaName,
+          version: 1,
+          notes: '',
+        },
+        entities: [],
+        relationships: [],
+        generalizations: [],
+        categories: [],
+        constraints: [],
         notes: '',
-      },
-      entities: [],
-      relationships: [],
-      generalizations: [],
-      categories: [],
-      constraints: [],
-      notes: '',
-      tags: [],
-      audit: {
-        createdBy: '',
-        createdAt: new Date().toISOString(),
-        updatedBy: '',
-        updatedAt: new Date().toISOString(),
-      },
-    };
+        tags: [],
+        audit: {
+          createdBy: '',
+          createdAt: new Date().toISOString(),
+          updatedBy: '',
+          updatedAt: new Date().toISOString(),
+        },
+      };
+    } else if (schemaType === SchemaType.Physical) {
+      modelTemplate = {
+        model: {
+          id: `${prefix}_model_${schemaId}`,
+          name: schemaName,
+          version: 1,
+          notes: '',
+          ...(dbms ? { dbms } : {}),
+        },
+        tables: [],
+        audit: {
+          createdBy: '',
+          createdAt: new Date().toISOString(),
+          updatedBy: '',
+          updatedAt: new Date().toISOString(),
+        },
+      };
+    } else {
+      modelTemplate = {
+        model: {
+          id: `${prefix}_model_${schemaId}`,
+          name: schemaName,
+          version: 1,
+          notes: '',
+        },
+        tables: [],
+        audit: {
+          createdBy: '',
+          createdAt: new Date().toISOString(),
+          updatedBy: '',
+          updatedAt: new Date().toISOString(),
+        },
+      };
+    }
 
     const currentVersionPrefix = `projects/${projectId}/schemas/${schemaId}/latest`;
     const diagramS3Key = `${currentVersionPrefix}/diagram.schema.json`;
@@ -616,6 +662,7 @@ export class ProjectsService {
       projectId: schema.projectId,
       name: schema.name,
       type: schema.type,
+      dbms: schema.dbms,
       createdAt: schema.createdAt,
       updatedAt: schema.updatedAt,
     }));
@@ -643,12 +690,15 @@ export class ProjectsService {
       projectId: projectId,
       name: dto.name,
       type: dto.type,
+      dbms: dto.type === SchemaType.Physical ? (dto.dbms ?? null) : null,
     });
 
     await this.initializeSchemaTemplates(
       schema.projectId,
       schema.id,
       schema.name,
+      schema.type,
+      schema.dbms ?? undefined,
     );
 
     return {
@@ -656,6 +706,7 @@ export class ProjectsService {
       projectId: schema.projectId,
       name: schema.name,
       type: schema.type,
+      dbms: schema.dbms,
       createdAt: schema.createdAt,
       updatedAt: schema.updatedAt,
     };
@@ -685,6 +736,7 @@ export class ProjectsService {
       projectId: schema.projectId,
       name: schema.name,
       type: schema.type,
+      dbms: schema.dbms,
       createdAt: schema.createdAt,
       updatedAt: schema.updatedAt,
     };
@@ -757,6 +809,7 @@ export class ProjectsService {
       projectId: schema.projectId,
       name: schema.name,
       type: schema.type,
+      dbms: schema.dbms,
       createdAt: schema.createdAt,
       updatedAt: schema.updatedAt,
     };

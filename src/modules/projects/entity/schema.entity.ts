@@ -33,6 +33,9 @@ export class SchemaEntity {
   })
   type: SchemaType;
 
+  @Column({ type: 'varchar', length: 20, nullable: true, default: null })
+  dbms: string | null;
+
   @CreateDateColumn({
     name: 'created_at',
     type: 'timestamptz',
