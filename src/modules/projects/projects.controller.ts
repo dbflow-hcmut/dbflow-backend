@@ -824,6 +824,7 @@ export class ProjectsController {
         projectId,
         schemaId,
         dto.name,
+        dto.dbms,
       );
       return result;
     } catch (error: unknown) {

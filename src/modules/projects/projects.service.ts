@@ -782,6 +782,7 @@ export class ProjectsService {
     projectId: string,
     schemaId: string,
     newName: string,
+    dbms?: string,
   ) {
     await this.checkWritePermission(userId, projectId);
 
@@ -802,6 +803,9 @@ export class ProjectsService {
     }
 
     schema.name = newName;
+    if (dbms !== undefined) {
+      schema.dbms = dbms;
+    }
     await this.schemasRepository.save(schema);
 
     return {

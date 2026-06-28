@@ -1,5 +1,5 @@
-import { IsNotEmpty, IsString, MaxLength } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import { IsIn, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class UpdateSchemaDto {
   @ApiProperty({ example: 'My Schema' })
@@ -7,4 +7,9 @@ export class UpdateSchemaDto {
   @IsNotEmpty()
   @MaxLength(255)
   name: string;
+
+  @ApiPropertyOptional({ example: 'postgresql', enum: ['postgresql', 'mysql', 'sqlserver'] })
+  @IsOptional()
+  @IsIn(['postgresql', 'mysql', 'sqlserver'])
+  dbms?: string;
 }
