@@ -4,6 +4,7 @@ import {
   SshAuthType,
 } from '@/common/enums/db-connection.enum';
 import { Client as PgClient } from 'pg';
+import type { QueryResult as PgQueryResult } from 'pg';
 
 export interface ConnectParams {
   dbms: DbConnectionDbms;
@@ -36,7 +37,7 @@ export interface QueryResult {
   success: boolean;
   rowCount: number;
   columns: string[];
-  rows: any[];
+  rows: Record<string, unknown>[];
   executionTimeMs: number;
   message?: string;
 }
@@ -44,7 +45,7 @@ export interface QueryResult {
 export async function executeQuery(
   params: ConnectParams,
   query: string,
-  queryParams?: any[],
+  queryParams?: unknown[],
   options?: { timeoutMs?: number; resultLimit?: number },
 ): Promise<QueryResult> {
   const start = Date.now();
@@ -109,7 +110,7 @@ async function executePostgres(
   params: ConnectParams,
   port: number,
   query: string,
-  queryParams: any[] | undefined,
+  queryParams: unknown[] | undefined,
   timeoutMs: number,
   resultLimit: number,
 ): Promise<QueryResult> {
@@ -123,6 +124,7 @@ async function executePostgres(
     connectionTimeoutMillis: timeoutMs,
     statement_timeout: timeoutMs,
   });
+  client.on('error', () => {});
 
   try {
     await client.connect();
@@ -134,25 +136,53 @@ async function executePostgres(
       finalQuery = query.trimEnd().replace(/;$/, '') + ` LIMIT ${resultLimit};`;
     }
 
-    const result = await client.query(finalQuery, queryParams);
+    const queryStart = Date.now();
+    const rawResult: unknown = await client.query(finalQuery, queryParams);
+    const executionTimeMs = Date.now() - queryStart;
+
+    // pg returns QueryResult[] for multi-statement queries (e.g. SET search_path + SELECT)
+    const result = getLastPgResultCandidate(rawResult);
+    if (!isPgQueryResult(result)) {
+      throw new Error('Unexpected PostgreSQL query result');
+    }
 
     return {
       success: true,
       rowCount: result.rows.length,
       columns: result.fields.map((f) => f.name),
       rows: result.rows,
-      executionTimeMs: 0,
+      executionTimeMs,
     };
   } finally {
     await client.end().catch(() => {});
   }
 }
 
+function getLastPgResultCandidate(value: unknown): unknown {
+  if (!Array.isArray(value)) return value;
+
+  const results = value as unknown[];
+  return results[results.length - 1];
+}
+
+function isPgQueryResult(
+  value: unknown,
+): value is PgQueryResult<Record<string, unknown>> {
+  if (typeof value !== 'object' || value === null) return false;
+
+  const candidate = value as {
+    rows?: unknown;
+    fields?: unknown;
+  };
+
+  return Array.isArray(candidate.rows) && Array.isArray(candidate.fields);
+}
+
 async function executeMySQL(
   params: ConnectParams,
   port: number,
   query: string,
-  queryParams: any[] | undefined,
+  queryParams: unknown[] | undefined,
   timeoutMs: number,
   resultLimit: number,
 ): Promise<QueryResult> {
@@ -175,18 +205,31 @@ async function executeMySQL(
       finalQuery = query.trimEnd().replace(/;$/, '') + ` LIMIT ${resultLimit};`;
     }
 
+    const queryStart = Date.now();
     const [rows, fields] = await connection.query(finalQuery, queryParams);
+    const executionTimeMs = Date.now() - queryStart;
+    const resultRows = toRecordRows(rows);
 
     return {
       success: true,
-      rowCount: Array.isArray(rows) ? rows.length : 0,
+      rowCount: resultRows.length,
       columns: Array.isArray(fields) ? fields.map((f) => f.name) : [],
-      rows: Array.isArray(rows) ? rows : [],
-      executionTimeMs: 0,
+      rows: resultRows,
+      executionTimeMs,
     };
   } finally {
     await connection.end().catch(() => {});
   }
+}
+
+function toRecordRows(value: unknown): Record<string, unknown>[] {
+  if (!Array.isArray(value)) return [];
+
+  return value.filter(isRecord);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 export async function testConnection(
@@ -241,6 +284,7 @@ async function testPostgres(params: ConnectParams, port: number) {
     ssl: params.ssl ? { rejectUnauthorized: false } : false,
     connectionTimeoutMillis: TIMEOUT_MS,
   });
+  client.on('error', () => {});
 
   try {
     await client.connect();

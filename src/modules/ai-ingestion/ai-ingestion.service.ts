@@ -10,6 +10,13 @@ interface IngestPayload {
   title: string;
 }
 
+export interface GenerateSqlPayload {
+  nl_query: string;
+  dbms: string;
+  schema_tables: unknown[];
+  project_id?: string;
+}
+
 @Injectable()
 export class AiIngestionService {
   private readonly logger = new Logger(AiIngestionService.name);
@@ -30,6 +37,20 @@ export class AiIngestionService {
       const text = await res.text().catch(() => res.status.toString());
       throw new Error(`AI ingest failed [${res.status}]: ${text}`);
     }
+  }
+
+  async generateSql(payload: GenerateSqlPayload): Promise<{ sql: string }> {
+    const res = await fetch(`${this.baseUrl}/api/text-to-sql`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => res.status.toString());
+      throw new Error(`AI text-to-sql failed [${res.status}]: ${text}`);
+    }
+    return res.json() as Promise<{ sql: string }>;
   }
 
   async removeDocument(documentId: string, projectId: string): Promise<void> {

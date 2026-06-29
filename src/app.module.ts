@@ -11,6 +11,7 @@ import { ChatModule } from './modules/chat/chat.module';
 import { CommentsModule } from './modules/comments/comments.module';
 import { DbConnectionsModule } from './modules/db-connections/db-connections.module';
 import { ProjectDocumentsModule } from './modules/project-documents/project-documents.module';
+import { ExportRecordsModule } from './modules/export-records/export-records.module';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { ProjectDocumentsModule } from './modules/project-documents/project-docu
     CommentsModule,
     DbConnectionsModule,
     ProjectDocumentsModule,
+    ExportRecordsModule,
   ],
   controllers: [],
   providers: [],

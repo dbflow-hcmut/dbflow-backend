@@ -130,6 +130,7 @@ async function listSchemasPostgres(
     ssl: params.ssl ? { rejectUnauthorized: false } : false,
     connectionTimeoutMillis: 10000,
   });
+  client.on('error', () => {});
   try {
     await client.connect();
     const res = await client.query<PgSchemaRow>(`
@@ -188,6 +189,7 @@ async function introspectPostgres(
     ssl: params.ssl ? { rejectUnauthorized: false } : false,
     connectionTimeoutMillis: 10000,
   });
+  client.on('error', () => {});
 
   try {
     await client.connect();

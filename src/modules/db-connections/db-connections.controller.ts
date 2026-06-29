@@ -27,6 +27,7 @@ import { UpdateDbConnectionDto } from './dto/update-db-connection.dto';
 import { TestDbConnectionDto } from './dto/test-db-connection.dto';
 import { ExecuteQueryDto } from './dto/execute-query.dto';
 import { LinkDbConnectionDto } from './dto/link-db-connection.dto';
+import { GenerateSqlDto } from './dto/generate-sql.dto';
 
 @ApiTags('DB Connections')
 @ApiCookieAuth()
@@ -138,6 +139,19 @@ export class DbConnectionsController {
     return this.service.introspect(req.user.id, connId, schema);
   }
 
+  @Post('db-connections/:connId/text-to-sql')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Generate SQL from natural language using DB schema + AI',
+  })
+  async generateSql(
+    @Req() req: AuthenticatedRequest,
+    @Param('connId') connId: string,
+    @Body(new ValidationPipe({ whitelist: true })) dto: GenerateSqlDto,
+  ) {
+    return this.service.generateSql(req.user.id, connId, dto);
+  }
+
   @Post('db-connections/:connId/execute')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Execute a query against a saved connection' })
@@ -147,6 +161,18 @@ export class DbConnectionsController {
     @Body(new ValidationPipe({ whitelist: true })) dto: ExecuteQueryDto,
   ) {
     return this.service.executeQuery(req.user.id, connId, dto);
+  }
+
+  // ─── Permissions ─────────────────────────────────────
+
+  @Post('db-connections/:connId/permissions')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Check permissions of the connected DB user' })
+  async checkPermissions(
+    @Req() req: AuthenticatedRequest,
+    @Param('connId') connId: string,
+  ) {
+    return this.service.checkPermissions(req.user.id, connId);
   }
 
   // ─── Project linking ──────────────────────────────────
