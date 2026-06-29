@@ -8,11 +8,11 @@ export class UpdateProfileDto {
   @MaxLength(255)
   firstName: string;
 
-  @ApiProperty({ example: 'Doe' })
-  @IsNotEmpty()
+  @ApiProperty({ example: 'Doe', required: false })
+  @IsOptional()
   @IsString()
   @MaxLength(255)
-  lastName: string;
+  lastName?: string;
 
   @ApiProperty({ example: '+1234567890', required: false })
   @IsOptional()
@@ -27,4 +27,10 @@ export class UpdateProfileDto {
   @IsOptional()
   @IsString()
   bio?: string;
+
+  @ApiProperty({ example: 'avatars/user-id/123-photo.jpg', required: false })
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  avatarKey?: string;
 }

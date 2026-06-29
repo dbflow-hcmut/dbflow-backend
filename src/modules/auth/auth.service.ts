@@ -42,7 +42,11 @@ export class AuthService {
     if (!payload || !payload.email) {
       throw new UnauthorizedException('Invalid Google token');
     }
-    return { email: payload.email, name: payload.name || payload.email };
+    return {
+      email: payload.email,
+      name: payload.name || payload.email,
+      picture: payload.picture,
+    };
   }
 
   async loginWithGoogle(idToken: string) {
@@ -50,6 +54,7 @@ export class AuthService {
     const user = await this.usersService.findOrCreateGoogleUser(
       googlePayload.email,
       googlePayload.name,
+      googlePayload.picture,
     );
     const access_token = await this.login({
       id: user.id,

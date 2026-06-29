@@ -33,6 +33,9 @@ export class UserEntity {
   @Column({ type: 'text', nullable: true })
   bio: string;
 
+  @Column({ name: 'avatar_key', type: 'varchar', length: 1000, nullable: true })
+  avatarKey: string | null;
+
   @Exclude()
   @Column({ type: 'varchar', length: 255, nullable: false })
   password: string;

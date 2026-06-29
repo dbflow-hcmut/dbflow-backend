@@ -9,6 +9,7 @@ import { UserEntity } from '@/modules/users/user.entity';
 import { RegisterDto } from './dto/register.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { S3Service } from '@/modules/s3/s3.service';
 import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
 
@@ -17,6 +18,7 @@ export class UsersService {
   constructor(
     @InjectRepository(UserEntity)
     private readonly usersRepo: Repository<UserEntity>,
+    private readonly s3Service: S3Service,
   ) {}
 
   async findByEmail(email: string): Promise<UserEntity | null> {
@@ -40,15 +42,24 @@ export class UsersService {
   async findOrCreateGoogleUser(
     email: string,
     fullName: string,
+    pictureUrl?: string,
   ): Promise<UserEntity> {
     const existing = await this.findByEmail(email);
-    if (existing) return existing;
+    if (existing) {
+      // Update Google avatar only if user hasn't set a custom S3 avatar
+      if (pictureUrl && (!existing.avatarKey || existing.avatarKey.startsWith('http'))) {
+        existing.avatarKey = pictureUrl;
+        await this.usersRepo.save(existing);
+      }
+      return existing;
+    }
 
     const randomPassword = await bcrypt.hash(crypto.randomUUID(), 10);
     const user = this.usersRepo.create({
       email,
       fullName,
       password: randomPassword,
+      avatarKey: pictureUrl || undefined,
     });
     return this.usersRepo.save(user);
   }
@@ -58,8 +69,8 @@ export class UsersService {
     if (!user) {
       throw new NotFoundException('User not found');
     }
-    const emailHash = this.generateEmailHash(user.email);
-    const avatar = `https://www.gravatar.com/avatar/${emailHash}?s=200&d=identicon&r=g`;
+
+    const avatar = this.resolveAvatarUrl(user);
 
     // If firstName and lastName are not set, try to split fullName
     let firstName = user.firstName;
@@ -79,7 +90,7 @@ export class UsersService {
       lastName: lastName || '',
       phone: user.phone || '',
       bio: user.bio || '',
-      avatar: avatar,
+      avatar,
     };
   }
 
@@ -89,14 +100,25 @@ export class UsersService {
       throw new NotFoundException('User not found');
     }
 
-    // Update individual fields
+    // Delete old S3 avatar if being replaced with a different key
+    if (
+      dto.avatarKey !== undefined &&
+      user.avatarKey &&
+      !user.avatarKey.startsWith('http') &&
+      user.avatarKey !== dto.avatarKey
+    ) {
+      this.s3Service.deleteFile(user.avatarKey).catch(() => {});
+    }
+
     user.firstName = dto.firstName;
-    user.lastName = dto.lastName;
+    user.lastName = dto.lastName ?? '';
     user.phone = dto.phone || '';
     user.bio = dto.bio || '';
+    user.fullName = `${dto.firstName} ${dto.lastName ?? ''}`.trim();
 
-    // Combine firstName and lastName to update fullName
-    user.fullName = `${dto.firstName} ${dto.lastName}`.trim();
+    if (dto.avatarKey !== undefined) {
+      user.avatarKey = dto.avatarKey;
+    }
 
     await this.usersRepo.save(user);
 
@@ -123,6 +145,17 @@ export class UsersService {
     await this.usersRepo.save(user);
 
     return { message: 'Password changed successfully' };
+  }
+
+  private resolveAvatarUrl(user: UserEntity): string {
+    if (user.avatarKey) {
+      if (user.avatarKey.startsWith('http')) {
+        return user.avatarKey;
+      }
+      return this.s3Service.getPublicUrl(user.avatarKey);
+    }
+    const emailHash = this.generateEmailHash(user.email);
+    return `https://www.gravatar.com/avatar/${emailHash}?s=200&d=identicon&r=g`;
   }
 
   private generateEmailHash(email: string): string {

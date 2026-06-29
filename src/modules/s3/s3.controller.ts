@@ -10,7 +10,9 @@ import {
   ForbiddenException,
   StreamableFile,
   Query,
+  Req,
 } from '@nestjs/common';
+import { Request } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiTags,
@@ -32,6 +34,7 @@ import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
 import { randomUUID } from 'crypto';
 
 const MAX_AI_ATTACHMENT_SIZE = 25 * 1024 * 1024;
+const MAX_AVATAR_SIZE = 5 * 1024 * 1024;
 
 function sanitizeFileName(fileName: string): string {
   return fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
@@ -108,6 +111,26 @@ export class S3Controller {
     const safeName = sanitizeFileName(dto.fileName);
     const key = `ai-attachments/${attachmentId}/${Date.now()}-${safeName}`;
     return this.s3Service.getPresignedUploadUrl(key, dto.mimeType, 900, 604800);
+  }
+
+  @Post('presigned-avatar')
+  @UseGuards(JwtAuthGuard)
+  @ApiCookieAuth()
+  @ApiOperation({ summary: 'Create presigned upload URL for user avatar' })
+  async createAvatarPresignedUpload(
+    @Req() req: Request & { user: { id: string } },
+    @Body() dto: PresignedUploadDto,
+  ): Promise<{ key: string; uploadUrl: string; url: string }> {
+    if (!Number.isFinite(dto.size) || dto.size <= 0) {
+      throw new BadRequestException('Invalid file size');
+    }
+    if (dto.size > MAX_AVATAR_SIZE) {
+      throw new ForbiddenException('File is too large (max 5MB)');
+    }
+
+    const safeName = sanitizeFileName(dto.fileName);
+    const key = `avatars/${req.user.id}/${Date.now()}-${safeName}`;
+    return this.s3Service.getPresignedUploadUrl(key, dto.mimeType, 300, 604800);
   }
 
   @Get('file')
