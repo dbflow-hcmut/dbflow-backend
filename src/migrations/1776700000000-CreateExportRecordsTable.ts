@@ -37,9 +37,13 @@ export class CreateExportRecordsTable1776700000000
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`DROP INDEX IF EXISTS "IDX_export_records_project_created";`);
+    await queryRunner.query(
+      `DROP INDEX IF EXISTS "IDX_export_records_project_created";`,
+    );
     await queryRunner.query(`DROP TABLE IF EXISTS "export_records";`);
-    await queryRunner.query(`DROP TYPE IF EXISTS "export_record_trigger_enum";`);
+    await queryRunner.query(
+      `DROP TYPE IF EXISTS "export_record_trigger_enum";`,
+    );
     await queryRunner.query(`DROP TYPE IF EXISTS "export_record_status_enum";`);
   }
 }

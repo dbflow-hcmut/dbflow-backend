@@ -5,7 +5,10 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { ExportRecordEntity, ExportRecordStatus } from './entity/export-record.entity';
+import {
+  ExportRecordEntity,
+  ExportRecordStatus,
+} from './entity/export-record.entity';
 import { CreateExportRecordDto } from './dto/create-export-record.dto';
 import { DbConnectionsService } from '@/modules/db-connections/db-connections.service';
 import { executeQuery } from '@/modules/db-connections/utils/db-connector.factory';
@@ -77,11 +80,7 @@ export class ExportRecordsService {
     await this.repo.remove(record);
   }
 
-  async rollback(
-    userId: string,
-    projectId: string,
-    recordId: string,
-  ) {
+  async rollback(userId: string, projectId: string, recordId: string) {
     const record = await this.repo.findOne({
       where: { id: recordId, projectId },
     });
@@ -122,7 +121,11 @@ export class ExportRecordsService {
 
       if (result.success) {
         succeeded++;
-        log.push({ statement: trimmed, status: 'ok', execution_time_ms: result.executionTimeMs });
+        log.push({
+          statement: trimmed,
+          status: 'ok',
+          execution_time_ms: result.executionTimeMs,
+        });
       } else {
         failed++;
         log.push({

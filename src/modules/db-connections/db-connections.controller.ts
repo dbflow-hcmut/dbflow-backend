@@ -141,7 +141,9 @@ export class DbConnectionsController {
 
   @Post('db-connections/:connId/text-to-sql')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Generate SQL from natural language using DB schema + AI' })
+  @ApiOperation({
+    summary: 'Generate SQL from natural language using DB schema + AI',
+  })
   async generateSql(
     @Req() req: AuthenticatedRequest,
     @Param('connId') connId: string,

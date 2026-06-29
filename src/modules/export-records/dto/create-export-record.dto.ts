@@ -1,5 +1,8 @@
 import { IsString, IsUUID, IsOptional, IsEnum } from 'class-validator';
-import { ExportRecordTrigger, ExportRecordStatus } from '../entity/export-record.entity';
+import {
+  ExportRecordTrigger,
+  ExportRecordStatus,
+} from '../entity/export-record.entity';
 
 export class CreateExportRecordDto {
   @IsUUID()

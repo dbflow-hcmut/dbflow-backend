@@ -131,20 +131,33 @@ async function checkMySQL(params: ConnectParams): Promise<PermissionMatrix> {
   try {
     const [rows] = await connection.query('SHOW GRANTS FOR CURRENT_USER()');
     const grants: string = Array.isArray(rows)
-      ? rows.map((r: any) => Object.values(r)[0] as string).join('\n').toUpperCase()
+      ? rows
+          .map((r: any) => Object.values(r)[0] as string)
+          .join('\n')
+          .toUpperCase()
       : '';
 
-    const hasAll = grants.includes('ALL PRIVILEGES') || grants.includes('ALL ON *.*');
-    const hasDDL = hasAll || grants.includes('CREATE') || grants.includes('ALTER') || grants.includes('DROP') || grants.includes('INDEX');
+    const hasAll =
+      grants.includes('ALL PRIVILEGES') || grants.includes('ALL ON *.*');
+    const hasDDL =
+      hasAll ||
+      grants.includes('CREATE') ||
+      grants.includes('ALTER') ||
+      grants.includes('DROP') ||
+      grants.includes('INDEX');
 
     const matrix: PermissionMatrix = {
       is_superuser: hasAll,
-      can_create_schema: hasAll || grants.includes('CREATE SCHEMA') || grants.includes('CREATE ON *'),
+      can_create_schema:
+        hasAll ||
+        grants.includes('CREATE SCHEMA') ||
+        grants.includes('CREATE ON *'),
       can_create_table: hasDDL,
       can_drop_table: hasAll || grants.includes('DROP'),
       can_alter_table: hasAll || grants.includes('ALTER'),
       can_create_index: hasDDL,
-      can_drop_index: hasAll || grants.includes('INDEX') || grants.includes('DROP'),
+      can_drop_index:
+        hasAll || grants.includes('INDEX') || grants.includes('DROP'),
       can_insert: hasAll || grants.includes('INSERT'),
       can_update: hasAll || grants.includes('UPDATE'),
       can_delete: hasAll || grants.includes('DELETE'),

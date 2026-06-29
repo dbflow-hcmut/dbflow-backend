@@ -24,10 +24,7 @@ import {
   listSchemas,
   IntrospectedTable,
 } from './utils/introspect.util';
-import {
-  checkPermissions,
-  PermissionMatrix,
-} from './utils/permissions.util';
+import { checkPermissions, PermissionMatrix } from './utils/permissions.util';
 import {
   AiIngestionService,
   GenerateSqlPayload,
