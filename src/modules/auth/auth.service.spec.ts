@@ -78,6 +78,7 @@ describe('AuthService', () => {
         lastName: '',
         phone: '',
         bio: '',
+        avatarKey: null,
         password: 'hash',
         role: Role.User,
         createdAt: new Date(),

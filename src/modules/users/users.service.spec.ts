@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { UsersService } from './users.service';
 import { UserEntity } from './user.entity';
+import { S3Service } from '@/modules/s3/s3.service';
 
 jest.mock('bcryptjs', () => ({
   hash: jest.fn(),
@@ -32,6 +33,10 @@ describe('UsersService', () => {
         {
           provide: getRepositoryToken(UserEntity),
           useValue: createRepoMock(),
+        },
+        {
+          provide: S3Service,
+          useValue: { getPublicUrl: jest.fn((key: string) => `https://bucket.s3.amazonaws.com/${key}`) },
         },
       ],
     }).compile();

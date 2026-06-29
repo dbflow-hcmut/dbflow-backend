@@ -47,7 +47,10 @@ export class UsersService {
     const existing = await this.findByEmail(email);
     if (existing) {
       // Update Google avatar only if user hasn't set a custom S3 avatar
-      if (pictureUrl && (!existing.avatarKey || existing.avatarKey.startsWith('http'))) {
+      if (
+        pictureUrl &&
+        (!existing.avatarKey || existing.avatarKey.startsWith('http'))
+      ) {
         existing.avatarKey = pictureUrl;
         await this.usersRepo.save(existing);
       }
