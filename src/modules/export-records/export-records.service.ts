@@ -107,7 +107,7 @@ export class ExportRecordsService {
 
       const result = await executeQuery(
         {
-          dbms: plainParams.dbms as any,
+          dbms: plainParams.dbms,
           method: DbConnectionMethod.Direct,
           host: plainParams.host,
           port: plainParams.port ?? undefined,

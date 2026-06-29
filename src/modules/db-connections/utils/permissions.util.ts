@@ -130,12 +130,10 @@ async function checkMySQL(params: ConnectParams): Promise<PermissionMatrix> {
 
   try {
     const [rows] = await connection.query('SHOW GRANTS FOR CURRENT_USER()');
-    const grants: string = Array.isArray(rows)
-      ? rows
-          .map((r: any) => Object.values(r)[0] as string)
-          .join('\n')
-          .toUpperCase()
-      : '';
+    const grants = toRecordRows(rows)
+      .map((row) => toGrantString(Object.values(row)[0]))
+      .join('\n')
+      .toUpperCase();
 
     const hasAll =
       grants.includes('ALL PRIVILEGES') || grants.includes('ALL ON *.*');
@@ -169,6 +167,25 @@ async function checkMySQL(params: ConnectParams): Promise<PermissionMatrix> {
   } finally {
     await connection.end().catch(() => {});
   }
+}
+
+function toRecordRows(value: unknown): Record<string, unknown>[] {
+  if (!Array.isArray(value)) return [];
+
+  return value.filter(isRecord);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function toGrantString(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+
+  return '';
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────
