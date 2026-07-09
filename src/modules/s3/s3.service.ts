@@ -173,6 +173,55 @@ export class S3Service {
     }
   }
 
+  async putObject(
+    key: string,
+    body: Buffer,
+    contentType = 'application/octet-stream',
+  ): Promise<void> {
+    try {
+      const command = new PutObjectCommand({
+        Bucket: this.bucketName,
+        Key: key,
+        Body: body,
+        ContentType: contentType,
+      });
+
+      await this.s3Client.send(command);
+      this.logger.log(`Binary object saved successfully: ${key}`);
+    } catch (error) {
+      this.logger.error(`Failed to save binary object: ${error}`);
+      throw error;
+    }
+  }
+
+  async getObjectBuffer(key: string): Promise<Buffer | null> {
+    try {
+      const command = new GetObjectCommand({
+        Bucket: this.bucketName,
+        Key: key,
+      });
+
+      const response = await this.s3Client.send(command);
+      if (!response.Body) {
+        return null;
+      }
+
+      const bytes = await response.Body.transformToByteArray();
+      return Buffer.from(bytes);
+    } catch (error) {
+      const err = error as {
+        name?: string;
+        $metadata?: { httpStatusCode?: number };
+      };
+      if (err.name === 'NoSuchKey' || err.$metadata?.httpStatusCode === 404) {
+        this.logger.warn(`Binary object not found: ${key}`);
+        return null;
+      }
+      this.logger.error(`Failed to get binary object: ${error}`);
+      throw error;
+    }
+  }
+
   async getJsonObject<T>(key: string): Promise<T | null> {
     try {
       const command = new GetObjectCommand({
