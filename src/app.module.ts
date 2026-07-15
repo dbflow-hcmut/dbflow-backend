@@ -12,6 +12,7 @@ import { CommentsModule } from './modules/comments/comments.module';
 import { DbConnectionsModule } from './modules/db-connections/db-connections.module';
 import { ProjectDocumentsModule } from './modules/project-documents/project-documents.module';
 import { ExportRecordsModule } from './modules/export-records/export-records.module';
+import { SandboxModule } from './modules/sandbox/sandbox.module';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { ExportRecordsModule } from './modules/export-records/export-records.mod
     DbConnectionsModule,
     ProjectDocumentsModule,
     ExportRecordsModule,
+    SandboxModule,
   ],
   controllers: [],
   providers: [],

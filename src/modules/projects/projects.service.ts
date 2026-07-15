@@ -1109,6 +1109,22 @@ export class ProjectsService {
   // ── Schema Versioning ────────────────────────────────────────────
 
   /**
+   * Public accessor for the freshest live model.json of a schema (Redis/Yjs
+   * first, S3 fallback) — used by the sandbox module to provision/sync a
+   * schema's sandbox against whatever the user is currently editing.
+   */
+  async getCurrentSchemaModel(
+    projectId: string,
+    schemaId: string,
+  ): Promise<Record<string, unknown> | null> {
+    const { model } = await this.getLatestSchemaDataFromRedis(
+      projectId,
+      schemaId,
+    );
+    return model;
+  }
+
+  /**
    * Read the latest model + diagram data from Redis (Yjs doc, freshest)
    * with S3 fallback.
    */
