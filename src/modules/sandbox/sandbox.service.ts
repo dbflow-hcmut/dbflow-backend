@@ -31,6 +31,65 @@ export interface SandboxQueryResult {
   executionTimeMs: number;
   message?: string;
   syncReport?: SyncReportEntry[];
+  /** Present only when a multi-statement batch (seed data or an ad-hoc
+   * multi-statement query) failed partway through — tells the caller exactly
+   * how far it got instead of one opaque error for the whole batch. */
+  statementProgress?: {
+    total: number;
+    succeeded: number;
+    failedStatement: string;
+  };
+}
+
+/** Splits a `;`-separated SQL string into individual statements, respecting
+ * single/double-quoted literals (including `''`-escaped quotes) so a
+ * semicolon inside a string value (e.g. a description field) doesn't cause a
+ * false split. Good enough for SQLite's quoting rules — this sandbox is
+ * always SQLite regardless of the project's target DBMS. */
+function splitSqlStatements(sql: string): string[] {
+  const statements: string[] = [];
+  let current = '';
+  let inSingleQuote = false;
+  let inDoubleQuote = false;
+
+  for (let i = 0; i < sql.length; i++) {
+    const ch = sql[i];
+    current += ch;
+
+    if (ch === "'" && !inDoubleQuote) {
+      if (inSingleQuote && sql[i + 1] === "'") {
+        current += "'";
+        i++;
+      } else {
+        inSingleQuote = !inSingleQuote;
+      }
+    } else if (ch === '"' && !inSingleQuote) {
+      inDoubleQuote = !inDoubleQuote;
+    } else if (ch === ';' && !inSingleQuote && !inDoubleQuote) {
+      const trimmed = current.slice(0, -1).trim();
+      if (trimmed) statements.push(trimmed);
+      current = '';
+    }
+  }
+
+  const rest = current.trim();
+  if (rest) statements.push(rest);
+  return statements;
+}
+
+/** Thrown mid-transaction by a failing statement in a multi-statement batch —
+ * carries enough context (index, total, the statement itself) for the caller
+ * to report exactly where execution stopped, while still letting the
+ * transaction wrapper roll back everything as a single atomic unit. */
+class SandboxStatementError extends Error {
+  constructor(
+    message: string,
+    readonly succeeded: number,
+    readonly total: number,
+    readonly statementText: string,
+  ) {
+    super(message);
+  }
 }
 
 interface SandboxHandle {
@@ -290,21 +349,40 @@ export class SandboxService {
       }
 
       // Non-SELECT: may be a single statement (text_to_sql) or a batch of
-      // INSERTs (seed_data) — better-sqlite3's exec() runs either. rowCount
-      // reflects only the LAST statement's affected-row count when multiple
-      // statements run in one call — a known best-effort limitation.
-      //
-      // Wrapped in db.transaction() so a batch either fully commits or fully
-      // rolls back. Without this, SQLite's autocommit mode persists every
-      // statement before the one that fails, leaving the sandbox partially
-      // seeded — which then makes a retry of the same script fail differently
-      // (stale rows collide with fresh inserts). better-sqlite3's transaction()
-      // also falls back to a SAVEPOINT instead of BEGIN if a transaction is
-      // already open on this handle, so it's safe even if ever called nested.
-      db.transaction(() => db.exec(trimmed))();
-      const { changes } = db.prepare('SELECT changes() AS changes').get() as {
-        changes: number;
-      };
+      // INSERTs (seed_data). Executed one statement at a time — still inside
+      // a single db.transaction() so the whole batch is still all-or-nothing
+      // (without this, SQLite's autocommit mode would persist every statement
+      // before the one that fails, leaving the sandbox partially seeded —
+      // which then makes a retry of the same script fail differently, as
+      // stale rows collide with fresh inserts) — but a failure partway
+      // through now reports exactly which statement it choked on, and how
+      // many ran successfully before it, instead of one opaque error for the
+      // entire batch. better-sqlite3's transaction() also falls back to a
+      // SAVEPOINT instead of BEGIN if a transaction is already open on this
+      // handle, so it's safe even if ever called nested.
+      const individualStatements = splitSqlStatements(trimmed);
+      let totalChanges = 0;
+      db.transaction(() => {
+        let succeeded = 0;
+        for (const statement of individualStatements) {
+          try {
+            db.exec(statement);
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            throw new SandboxStatementError(
+              message,
+              succeeded,
+              individualStatements.length,
+              statement,
+            );
+          }
+          const { changes } = db.prepare('SELECT changes() AS changes').get() as {
+            changes: number;
+          };
+          totalChanges += changes;
+          succeeded++;
+        }
+      })();
       const modelForFlush = await this.projectsService.getCurrentSchemaModel(
         projectId,
         schemaId,
@@ -323,13 +401,29 @@ export class SandboxService {
 
       return {
         success: true,
-        rowCount: changes,
+        rowCount: totalChanges,
         columns: [],
         rows: [],
         executionTimeMs: Date.now() - start,
         syncReport,
       };
     } catch (err) {
+      if (err instanceof SandboxStatementError) {
+        return {
+          success: false,
+          rowCount: 0,
+          columns: [],
+          rows: [],
+          executionTimeMs: Date.now() - start,
+          message: `Statement ${err.succeeded + 1}/${err.total} failed: ${err.message}`,
+          syncReport,
+          statementProgress: {
+            total: err.total,
+            succeeded: err.succeeded,
+            failedStatement: err.statementText,
+          },
+        };
+      }
       return {
         success: false,
         rowCount: 0,
