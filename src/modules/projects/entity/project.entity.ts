@@ -12,6 +12,7 @@ import { UserEntity } from '@/modules/users/user.entity';
 import { ProjectVisibility } from '@/common/enums/project-visibility.enum';
 import { UserProjectEntity } from './user-project.entity';
 import { ProjectInvitationEntity } from './project-invitation.entity';
+import { WorkspaceEntity } from '@/modules/workspaces/entity/workspace.entity';
 
 @Entity('projects')
 export class ProjectEntity {
@@ -20,6 +21,9 @@ export class ProjectEntity {
 
   @Column({ name: 'owner_id', type: 'uuid', nullable: false })
   ownerId: string;
+
+  @Column({ name: 'workspace_id', type: 'uuid', nullable: false })
+  workspaceId: string;
 
   @Column({
     type: 'varchar',
@@ -64,6 +68,10 @@ export class ProjectEntity {
   @ManyToOne(() => UserEntity, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'owner_id' })
   owner: UserEntity;
+
+  @ManyToOne(() => WorkspaceEntity, { onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'workspace_id' })
+  workspace: WorkspaceEntity;
 
   @OneToMany(() => UserProjectEntity, (userProject) => userProject.project)
   userProjects: UserProjectEntity[];

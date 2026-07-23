@@ -4,10 +4,20 @@ import {
   MaxLength,
   IsOptional,
   IsBoolean,
+  IsUUID,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateProjectDto {
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description:
+      'Workspace that owns the project. Defaults to the personal workspace.',
+  })
+  @IsOptional()
+  @IsUUID()
+  workspaceId?: string;
+
   @ApiProperty({ example: 'Project Name' })
   @IsString()
   @IsNotEmpty()

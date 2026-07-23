@@ -17,6 +17,7 @@ import {
   CreateProjectDocumentDto,
   UpdateProjectDocumentDto,
 } from './dto/project-document.dto';
+import { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
 
 const ALLOWED_MIME_TYPES = new Set([
   'application/pdf',
@@ -44,6 +45,7 @@ export class ProjectDocumentsService {
     private readonly projectsService: ProjectsService,
     private readonly s3Service: S3Service,
     private readonly aiIngestion: AiIngestionService,
+    private readonly subscriptionsService: SubscriptionsService,
   ) {}
 
   async findAll(
@@ -72,6 +74,10 @@ export class ProjectDocumentsService {
   ) {
     await this.projectsService.checkWritePermission(userId, projectId);
     this.validateFile(dto.mimeType, dto.size);
+    await this.subscriptionsService.assertDocumentStorageQuota(
+      projectId,
+      dto.size,
+    );
     this.validateDocumentKey(
       projectId,
       dto.s3Key,
@@ -127,6 +133,7 @@ export class ProjectDocumentsService {
   ) {
     await this.projectsService.checkWritePermission(userId, projectId);
     this.validateFile(mimeType, size);
+    await this.subscriptionsService.assertDocumentStorageQuota(projectId, size);
   }
 
   async findOne(userId: string, projectId: string, documentId: string) {

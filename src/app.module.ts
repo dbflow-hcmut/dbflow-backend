@@ -13,6 +13,11 @@ import { DbConnectionsModule } from './modules/db-connections/db-connections.mod
 import { ProjectDocumentsModule } from './modules/project-documents/project-documents.module';
 import { ExportRecordsModule } from './modules/export-records/export-records.module';
 import { SandboxModule } from './modules/sandbox/sandbox.module';
+import { WorkspacesModule } from './modules/workspaces/workspaces.module';
+import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
+import { UsageModule } from './modules/usage/usage.module';
+import { AiGatewayModule } from './modules/ai-gateway/ai-gateway.module';
+import { BillingModule } from './modules/billing/billing.module';
 
 @Module({
   imports: [
@@ -41,6 +46,11 @@ import { SandboxModule } from './modules/sandbox/sandbox.module';
     ProjectDocumentsModule,
     ExportRecordsModule,
     SandboxModule,
+    WorkspacesModule,
+    SubscriptionsModule,
+    UsageModule,
+    AiGatewayModule,
+    BillingModule,
   ],
   controllers: [],
   providers: [],

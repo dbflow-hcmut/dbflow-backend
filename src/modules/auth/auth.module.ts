@@ -5,6 +5,7 @@ import { UsersModule } from '@/modules/users/users.module';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from '@/common/strategies/jwt.strategy';
+import { WorkspacesModule } from '@/modules/workspaces/workspaces.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { JwtStrategy } from '@/common/strategies/jwt.strategy';
       secret: process.env.JWT_SECRET || 'dbflow_secret',
       signOptions: { expiresIn: '7d' },
     }),
+    WorkspacesModule,
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy],

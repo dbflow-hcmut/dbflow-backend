@@ -10,6 +10,7 @@ import { RegisterDto } from './dto/register.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { S3Service } from '@/modules/s3/s3.service';
+import { resolveAvatarUrl } from '@/common/utils/avatar.util';
 import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
 
@@ -94,6 +95,7 @@ export class UsersService {
       phone: user.phone || '',
       bio: user.bio || '',
       avatar,
+      role: user.role,
     };
   }
 
@@ -151,20 +153,6 @@ export class UsersService {
   }
 
   private resolveAvatarUrl(user: UserEntity): string {
-    if (user.avatarKey) {
-      if (user.avatarKey.startsWith('http')) {
-        return user.avatarKey;
-      }
-      return this.s3Service.getPublicUrl(user.avatarKey);
-    }
-    const emailHash = this.generateEmailHash(user.email);
-    return `https://www.gravatar.com/avatar/${emailHash}?s=200&d=identicon&r=g`;
-  }
-
-  private generateEmailHash(email: string): string {
-    return crypto
-      .createHash('md5')
-      .update(email.toLowerCase().trim())
-      .digest('hex');
+    return resolveAvatarUrl(user, this.s3Service);
   }
 }

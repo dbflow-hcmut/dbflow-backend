@@ -19,6 +19,7 @@ import { LoginDto } from './dto/login.dto';
 import { GoogleLoginDto } from './dto/google-login.dto';
 import { UsersService } from '@/modules/users/users.service';
 import { RegisterDto } from '@/modules/users/dto/register.dto';
+import { WorkspacesService } from '@/modules/workspaces/workspaces.service';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -26,6 +27,7 @@ export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly usersService: UsersService,
+    private readonly workspacesService: WorkspacesService,
   ) {}
 
   @Post('login')
@@ -113,6 +115,7 @@ export class AuthController {
       return { message: 'Email already in use' };
     }
     const user = await this.usersService.createUser(dto);
+    await this.workspacesService.ensurePersonalWorkspace(user);
     return {
       id: user.id,
       email: user.email,

@@ -3,6 +3,8 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { OAuth2Client } from 'google-auth-library';
 import { UsersService } from '@/modules/users/users.service';
+import { WorkspacesService } from '@/modules/workspaces/workspaces.service';
+import { UserStatus } from '@/common/enums/user-status.enum';
 
 @Injectable()
 export class AuthService {
@@ -11,6 +13,7 @@ export class AuthService {
   constructor(
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
+    private readonly workspacesService: WorkspacesService,
   ) {
     this.googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
   }
@@ -19,6 +22,9 @@ export class AuthService {
     const user = await this.usersService.findByEmail(email);
     if (!user) {
       throw new UnauthorizedException('Invalid credentials');
+    }
+    if (user.status === UserStatus.Suspended) {
+      throw new UnauthorizedException('Account is suspended');
     }
     const isValid = await bcrypt.compare(pass, user.password);
     if (!isValid) {
@@ -56,6 +62,7 @@ export class AuthService {
       googlePayload.name,
       googlePayload.picture,
     );
+    await this.workspacesService.ensurePersonalWorkspace(user);
     const access_token = await this.login({
       id: user.id,
       email: user.email,

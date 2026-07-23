@@ -22,11 +22,13 @@ import { InviteStatus } from '@/common/enums/invite-status.enum';
 import { S3Service } from '../s3/s3.service';
 import { UsersService } from '../users/users.service';
 import { MailService } from '../mail/mail.service';
-import * as crypto from 'crypto';
 import { SchemaType } from '@/common/enums/schema-type.enum';
 import { ProjectVisibility } from '@/common/enums/project-visibility.enum';
+import { resolveAvatarUrl } from '@/common/utils/avatar.util';
 import Redis from 'ioredis';
 import * as Y from 'yjs';
+import { WorkspacesService } from '@/modules/workspaces/workspaces.service';
+import { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
 
 const logger = new Logger('ProjectsService');
 
@@ -47,11 +49,21 @@ export class ProjectsService {
     private readonly usersService: UsersService,
     private readonly mailService: MailService,
     @Inject('REDIS_CLIENT') private readonly redisClient: Redis,
+    private readonly workspacesService: WorkspacesService,
+    private readonly subscriptionsService: SubscriptionsService,
   ) {}
 
   async createProject(userId: string, dto: CreateProjectDto) {
+    const workspace = dto.workspaceId
+      ? await this.workspacesService.assertCanCreateResources(
+          userId,
+          dto.workspaceId,
+        )
+      : await this.workspacesService.getPersonalWorkspace(userId);
+    await this.subscriptionsService.assertProjectQuota(workspace.id);
     const project = await this.projectsRepository.save({
       ownerId: userId,
+      workspaceId: workspace.id,
       name: dto.name,
       description: dto.description ?? null,
     });
@@ -92,6 +104,16 @@ export class ProjectsService {
       .leftJoinAndSelect('project.owner', 'owner')
       .where('userProject.userId = :userId', { userId });
 
+    if (query?.workspaceId) {
+      await this.workspacesService.assertActiveMember(
+        userId,
+        query.workspaceId,
+      );
+      queryBuilder.andWhere('project.workspaceId = :workspaceId', {
+        workspaceId: query.workspaceId,
+      });
+    }
+
     if (query?.keyword) {
       queryBuilder.andWhere('project.name ILIKE :keyword', {
         keyword: `%${query.keyword}%`,
@@ -125,30 +147,22 @@ export class ProjectsService {
 
   private formatProjectResponse(project: ProjectEntity) {
     const owner = project.owner;
-    const emailHash = this.generateEmailHash(owner.email);
-    const avatar = `https://www.gravatar.com/avatar/${emailHash}?s=200&d=identicon&r=g`;
 
     return {
       id: project.id,
+      workspaceId: project.workspaceId,
       name: project.name,
       owner: {
         id: owner.id,
         name: owner.fullName,
         email: owner.email,
-        avatar: avatar,
+        avatar: resolveAvatarUrl(owner, this.s3Service),
       },
       createdAt: project.createdAt,
       updatedAt: project.updatedAt,
       visibility: project.visibility,
       status: 'active',
     };
-  }
-
-  private generateEmailHash(email: string): string {
-    return crypto
-      .createHash('md5')
-      .update(email.toLowerCase().trim())
-      .digest('hex');
   }
 
   async getProjectInformation(userId: string, projectId: string) {
@@ -162,7 +176,6 @@ export class ProjectsService {
     if (!project) {
       throw new NotFoundException('Project not found');
     }
-
     // Auto-add user to members if accessing public project
     if (userId && userId !== project.ownerId) {
       await this.ensureUserMembership(userId, projectId, project.visibility);
@@ -408,6 +421,10 @@ export class ProjectsService {
     if (!projectInfo) {
       throw new NotFoundException('Project not found');
     }
+    await this.workspacesService.assertResourceWorkspaceAccess(
+      userId,
+      projectInfo.workspaceId,
+    );
 
     // Allow public projects
     if (
@@ -454,6 +471,10 @@ export class ProjectsService {
     if (!projectInfo) {
       throw new NotFoundException('Project not found');
     }
+    await this.workspacesService.assertResourceWorkspaceAccess(
+      userId,
+      projectInfo.workspaceId,
+    );
 
     // Check if user is owner
     if (userId === projectInfo.ownerId) {
@@ -553,7 +574,6 @@ export class ProjectsService {
     if (!project) {
       throw new NotFoundException('Project not found');
     }
-
     // Auto-add user to members if accessing public project
     if (userId && userId !== project.ownerId) {
       await this.ensureUserMembership(userId, projectId, project.visibility);
@@ -584,13 +604,11 @@ export class ProjectsService {
     }> = [];
 
     // Add owner first
-    const ownerEmailHash = this.generateEmailHash(project.owner.email);
-    const ownerAvatar = `https://www.gravatar.com/avatar/${ownerEmailHash}?s=200&d=identicon&r=g`;
     listUsers.push({
       userId: project.owner.id,
       fullName: project.owner.fullName,
       email: project.owner.email,
-      avatar: ownerAvatar,
+      avatar: resolveAvatarUrl(project.owner, this.s3Service),
       permission: 'owner',
       isVerified: true,
       invitePermission: null,
@@ -601,13 +619,11 @@ export class ProjectsService {
     // Add members (excluding owner to avoid duplicates)
     for (const up of userProjects) {
       if (up.userId === project.ownerId) continue;
-      const emailHash = this.generateEmailHash(up.user.email);
-      const avatar = `https://www.gravatar.com/avatar/${emailHash}?s=200&d=identicon&r=g`;
       listUsers.push({
         userId: up.user.id,
         fullName: up.user.fullName,
         email: up.user.email,
-        avatar,
+        avatar: resolveAvatarUrl(up.user, this.s3Service),
         permission: up.permission,
         isVerified: true,
         invitePermission: null,
@@ -620,13 +636,14 @@ export class ProjectsService {
     const memberUserIds = new Set(userProjects.map((up) => up.userId));
     for (const inv of invitations) {
       if (inv.invitedUserId && memberUserIds.has(inv.invitedUserId)) continue;
-      const emailHash = this.generateEmailHash(inv.email);
-      const avatar = `https://www.gravatar.com/avatar/${emailHash}?s=200&d=identicon&r=g`;
       listUsers.push({
         userId: inv.invitedUserId || inv.id,
         fullName: inv.invitedUser?.fullName || inv.email,
         email: inv.email,
-        avatar,
+        avatar: resolveAvatarUrl(
+          inv.invitedUser ?? { avatarKey: null, email: inv.email },
+          this.s3Service,
+        ),
         permission: 'invited',
         isVerified: false,
         invitePermission: inv.permission,
@@ -680,6 +697,10 @@ export class ProjectsService {
     if (!project) {
       throw new NotFoundException('Project not found');
     }
+    await this.subscriptionsService.assertSchemaQuota(
+      project.workspaceId,
+      projectId,
+    );
 
     // Auto-add user to members if accessing public project
     if (userId && userId !== project.ownerId) {
@@ -831,6 +852,10 @@ export class ProjectsService {
     if (!project) {
       throw new NotFoundException('Project not found');
     }
+    await this.workspacesService.assertResourceWorkspaceAccess(
+      userId,
+      project.workspaceId,
+    );
 
     if (project.ownerId !== userId) {
       throw new ForbiddenException(
@@ -923,6 +948,18 @@ export class ProjectsService {
     const results: Array<{ email: string; status: string }> = [];
 
     for (const inviteItem of dto.users) {
+      const canReceiveAccess =
+        await this.workspacesService.canReceiveProjectAccess(
+          project.workspaceId,
+          inviteItem.email,
+        );
+      if (!canReceiveAccess) {
+        results.push({
+          email: inviteItem.email,
+          status: 'not_workspace_member',
+        });
+        continue;
+      }
       const targetUser = await this.usersService.findByEmail(inviteItem.email);
 
       if (targetUser && targetUser.id === project.ownerId) {
@@ -1203,6 +1240,10 @@ export class ProjectsService {
     if (!schema) {
       throw new NotFoundException('Schema not found');
     }
+    await this.subscriptionsService.assertSchemaVersionQuota(
+      projectId,
+      schemaId,
+    );
 
     // Read freshest data from Redis (Yjs doc) with S3 fallback
     const { model: modelData, diagram: diagramData } =

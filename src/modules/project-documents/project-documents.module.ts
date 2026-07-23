@@ -6,6 +6,7 @@ import { S3Module } from '@/modules/s3/s3.module';
 import { ProjectDocumentEntity } from './entity/project-document.entity';
 import { ProjectDocumentsController } from './project-documents.controller';
 import { ProjectDocumentsService } from './project-documents.service';
+import { SubscriptionsModule } from '@/modules/subscriptions/subscriptions.module';
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { ProjectDocumentsService } from './project-documents.service';
     AiIngestionModule,
     ProjectsModule,
     S3Module,
+    SubscriptionsModule,
   ],
   controllers: [ProjectDocumentsController],
   providers: [ProjectDocumentsService],

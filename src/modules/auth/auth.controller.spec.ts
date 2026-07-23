@@ -6,12 +6,17 @@ import { AuthService } from './auth.service';
 import { UsersService } from '@/modules/users/users.service';
 import { UserEntity } from '@/modules/users/user.entity';
 import { Role } from '@/common/enums/role.enum';
+import { WorkspacesService } from '@/modules/workspaces/workspaces.service';
+import { UserStatus } from '@/common/enums/user-status.enum';
 
 describe('AuthController', () => {
   let controller: AuthController;
   let authService: jest.Mocked<Pick<AuthService, 'validateUser' | 'login'>>;
   let usersService: jest.Mocked<
     Pick<UsersService, 'findByEmail' | 'createUser'>
+  >;
+  let workspacesService: jest.Mocked<
+    Pick<WorkspacesService, 'ensurePersonalWorkspace'>
   >;
 
   beforeEach(async () => {
@@ -32,12 +37,19 @@ describe('AuthController', () => {
             createUser: jest.fn(),
           },
         },
+        {
+          provide: WorkspacesService,
+          useValue: {
+            ensurePersonalWorkspace: jest.fn(),
+          },
+        },
       ],
     }).compile();
 
     controller = module.get<AuthController>(AuthController);
     authService = module.get(AuthService);
     usersService = module.get(UsersService);
+    workspacesService = module.get(WorkspacesService);
   });
 
   describe('login', () => {
@@ -53,6 +65,9 @@ describe('AuthController', () => {
         avatarKey: null,
         password: 'hash',
         role: Role.User,
+        status: UserStatus.Active,
+        suspendedAt: null,
+        suspendedReason: null,
         createdAt: new Date(),
         updatedAt: new Date(),
       };
@@ -139,6 +154,9 @@ describe('AuthController', () => {
         role: Role.User,
       });
       expect(usersService.createUser).toHaveBeenCalled();
+      expect(workspacesService.ensurePersonalWorkspace).toHaveBeenCalledWith(
+        expect.objectContaining({ id: '2', email: 'a@b.com' }),
+      );
     });
   });
 });

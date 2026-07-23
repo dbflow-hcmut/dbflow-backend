@@ -11,6 +11,8 @@ import { S3Module } from '../s3/s3.module';
 import { UsersModule } from '../users/users.module';
 import { MailModule } from '../mail/mail.module';
 import { RedisModule } from '@/redis/redis.module';
+import { WorkspacesModule } from '@/modules/workspaces/workspaces.module';
+import { SubscriptionsModule } from '@/modules/subscriptions/subscriptions.module';
 
 @Module({
   imports: [
@@ -25,6 +27,8 @@ import { RedisModule } from '@/redis/redis.module';
     UsersModule,
     MailModule,
     RedisModule,
+    WorkspacesModule,
+    SubscriptionsModule,
   ],
   controllers: [ProjectsController],
   providers: [ProjectsService],

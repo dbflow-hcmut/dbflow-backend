@@ -107,4 +107,104 @@ export class MailService {
       this.logger.error(`Failed to send invitation email to ${to}`, error);
     }
   }
+
+  async sendWorkspaceInvitationEmail(
+    to: string,
+    workspaceName: string,
+    token: string,
+  ): Promise<void> {
+    const acceptUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/accept-workspace-invite?token=${encodeURIComponent(token)}`;
+    const safeWorkspaceName = this.escapeHtml(workspaceName);
+    try {
+      await this.transporter.sendMail({
+        from: `"DBFlow" <${process.env.MAIL_USER}>`,
+        to,
+        subject: `You were invited to "${workspaceName}" on DBFlow`,
+        html: `
+          <div style="font-family: Arial, sans-serif; color: #111827">
+            <h2>Workspace invitation</h2>
+            <p>You were invited to join <strong>${safeWorkspaceName}</strong> on DBFlow.</p>
+            <p>
+              <a href="${acceptUrl}" style="display:inline-block;padding:12px 20px;background:#42A5F5;color:#fff;text-decoration:none;border-radius:6px">
+                Accept invitation
+              </a>
+            </p>
+            <p>This invitation expires in 7 days.</p>
+          </div>
+        `,
+      });
+      this.logger.log(`Workspace invitation email sent to ${to}`);
+    } catch (error) {
+      this.logger.error(
+        `Failed to send workspace invitation email to ${to}`,
+        error,
+      );
+    }
+  }
+
+  async sendRenewalBillEmail(input: {
+    to: string;
+    recipientName: string;
+    workspaceName: string;
+    planName: string;
+    amount: string;
+    currency: string;
+    expiresAt: Date;
+    checkoutUrl: string;
+  }): Promise<void> {
+    const recipientName = this.escapeHtml(input.recipientName || 'there');
+    const workspaceName = this.escapeHtml(input.workspaceName);
+    const planName = this.escapeHtml(input.planName);
+    const amount = this.escapeHtml(
+      `${Number(input.amount).toLocaleString('vi-VN')} ${input.currency}`,
+    );
+    const checkoutUrl = this.escapeHtml(input.checkoutUrl);
+    try {
+      await this.transporter.sendMail({
+        from: `"DBFlow" <${process.env.MAIL_USER}>`,
+        to: input.to,
+        subject: `Renewal bill for "${input.workspaceName}"`,
+        html: `
+          <div style="font-family:Arial,sans-serif;color:#111827;line-height:1.6">
+            <h2>Subscription renewal bill</h2>
+            <p>Hi ${recipientName},</p>
+            <p>A renewal bill has been created for workspace <strong>${workspaceName}</strong>.</p>
+            <p>
+              Plan: <strong>${planName}</strong><br />
+              Amount: <strong>${amount}</strong><br />
+              Payment due: <strong>${input.expiresAt.toLocaleString('vi-VN', {
+                timeZone: 'Asia/Ho_Chi_Minh',
+              })}</strong>
+            </p>
+            <p>
+              <a href="${checkoutUrl}" style="display:inline-block;padding:12px 20px;background:#42A5F5;color:#fff;text-decoration:none;border-radius:6px">
+                Pay renewal bill
+              </a>
+            </p>
+            <p>If this bill is not paid by the due date, it will be canceled and the subscription will not renew.</p>
+          </div>
+        `,
+      });
+      this.logger.log(`Renewal bill email sent to ${input.to}`);
+    } catch (error) {
+      this.logger.error(
+        `Failed to send renewal bill email to ${input.to}`,
+        error,
+      );
+    }
+  }
+
+  private escapeHtml(value: string): string {
+    return value.replace(
+      /[&<>"']/g,
+      (character) =>
+        ({
+          '&': '&amp;',
+          '<': '&lt;',
+          '>': '&gt;',
+          '"': '&quot;',
+          "'": '&#039;',
+        })[character]!,
+    );
+  }
 }

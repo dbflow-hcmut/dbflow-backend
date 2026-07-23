@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ForbiddenException,
   ConflictException,
+  BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -30,6 +31,11 @@ import {
   GenerateSqlPayload,
 } from '../ai-ingestion/ai-ingestion.service';
 import { GenerateSqlDto } from './dto/generate-sql.dto';
+import { WorkspacesService } from '@/modules/workspaces/workspaces.service';
+import { ProjectEntity } from '@/modules/projects/entity/project.entity';
+import * as crypto from 'crypto';
+import { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
+import { UsageService } from '@/modules/usage/usage.service';
 
 @Injectable()
 export class DbConnectionsService {
@@ -38,14 +44,44 @@ export class DbConnectionsService {
     private readonly dbConnectionRepo: Repository<DbConnectionEntity>,
     @InjectRepository(ProjectDbConnectionEntity)
     private readonly projectDbConnectionRepo: Repository<ProjectDbConnectionEntity>,
+    @InjectRepository(ProjectEntity)
+    private readonly projectsRepo: Repository<ProjectEntity>,
     private readonly aiIngestionService: AiIngestionService,
+    private readonly workspacesService: WorkspacesService,
+    private readonly subscriptionsService: SubscriptionsService,
+    private readonly usageService: UsageService,
   ) {}
 
   // ─── CRUD ──────────────────────────────────────────────
 
   async create(userId: string, dto: CreateDbConnectionDto) {
+    let workspaceId = dto.workspaceId;
+    if (dto.projectId) {
+      const project = await this.projectsRepo.findOne({
+        where: { id: dto.projectId },
+      });
+      if (!project) throw new NotFoundException('Project not found');
+      await this.workspacesService.assertResourceWorkspaceAccess(
+        userId,
+        project.workspaceId,
+      );
+      if (workspaceId && workspaceId !== project.workspaceId) {
+        throw new BadRequestException(
+          'Project and DB connection must use the same workspace',
+        );
+      }
+      workspaceId = project.workspaceId;
+    }
+    const workspace = workspaceId
+      ? await this.workspacesService.assertCanCreateResources(
+          userId,
+          workspaceId,
+        )
+      : await this.workspacesService.getPersonalWorkspace(userId);
+    await this.subscriptionsService.assertDbConnectionQuota(workspace.id);
     const entity = this.dbConnectionRepo.create({
       createdBy: userId,
+      workspaceId: workspace.id,
       name: dto.name,
       dbms: dto.dbms,
       method: dto.method,
@@ -75,12 +111,19 @@ export class DbConnectionsService {
     return this.sanitize(saved);
   }
 
-  async findAllByUser(userId: string) {
+  async findAll(userId: string, workspaceId?: string) {
+    if (workspaceId) {
+      await this.workspacesService.assertActiveMember(userId, workspaceId);
+    }
     const connections = await this.dbConnectionRepo.find({
-      where: { createdBy: userId },
+      where: workspaceId ? { workspaceId } : { createdBy: userId },
       order: { createdAt: 'DESC' },
     });
     return connections.map((c) => this.sanitize(c));
+  }
+
+  async findAllByUser(userId: string) {
+    return this.findAll(userId);
   }
 
   async findByProject(projectId: string) {
@@ -166,6 +209,15 @@ export class DbConnectionsService {
     if (!conn) throw new NotFoundException('Connection not found');
     if (conn.createdBy !== userId)
       throw new ForbiddenException('Not your connection');
+    const project = await this.projectsRepo.findOne({
+      where: { id: projectId },
+    });
+    if (!project) throw new NotFoundException('Project not found');
+    if (project.workspaceId !== conn.workspaceId) {
+      throw new BadRequestException(
+        'A DB connection can only be linked within its workspace',
+      );
+    }
 
     const existing = await this.projectDbConnectionRepo.findOne({
       where: { projectId, dbConnectionId: connId },
@@ -362,7 +414,30 @@ export class DbConnectionsService {
       project_id: dto.project_id,
     };
 
-    return this.aiIngestionService.generateSql(payload);
+    const operationId = crypto.randomUUID();
+    await this.usageService.reserve(
+      userId,
+      conn.workspaceId,
+      'ai_requests_monthly',
+      operationId,
+      1,
+      { type: 'text_to_sql', connectionId: connId },
+    );
+    try {
+      const result = await this.aiIngestionService.generateSql(payload);
+      await this.usageService.commit(operationId);
+      await this.usageService
+        .recordTokenUsage(operationId, {
+          inputTokens: result.usage?.input_tokens ?? 0,
+          outputTokens: result.usage?.output_tokens ?? 0,
+          modelCalls: 1,
+        })
+        .catch(() => undefined);
+      return { sql: result.sql };
+    } catch (error) {
+      await this.usageService.release(operationId);
+      throw error;
+    }
   }
 
   // ─── Execute Query ────────────────────────────────────
@@ -431,6 +506,7 @@ export class DbConnectionsService {
     return {
       id: conn.id,
       createdBy: conn.createdBy,
+      workspaceId: conn.workspaceId,
       name: conn.name,
       dbms: conn.dbms,
       method: conn.method,
