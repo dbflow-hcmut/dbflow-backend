@@ -15,6 +15,7 @@ import { WorkspaceMemberEntity } from '@/modules/workspaces/entity/workspace-mem
 import { WorkspaceEntity } from '@/modules/workspaces/entity/workspace.entity';
 import {
   WorkspaceMemberStatus,
+  WorkspaceStatus,
   WorkspaceType,
 } from '@/modules/workspaces/workspace.enums';
 import { PlanEntity } from './entity/plan.entity';
@@ -148,8 +149,12 @@ export class SubscriptionsService implements OnModuleInit, OnModuleDestroy {
       relations: ['plan', 'workspace'],
       order: { createdAt: 'DESC' },
     });
-    if (!latestSubscription) throw new NotFoundException('Subscription not found');
-    const subscription = await this.getWorkspaceSubscription(userId, workspaceId);
+    if (!latestSubscription)
+      throw new NotFoundException('Subscription not found');
+    const subscription = await this.getWorkspaceSubscription(
+      userId,
+      workspaceId,
+    );
     const restrictedSubscription = await this.subscriptionsRepo.findOne({
       where: {
         workspaceId,
@@ -216,7 +221,7 @@ export class SubscriptionsService implements OnModuleInit, OnModuleDestroy {
       subscription,
       plan: subscription.plan,
       access: {
-        suspended: subscription.workspace.status === 'suspended',
+        suspended: subscription.workspace.status === WorkspaceStatus.Suspended,
         restricted: Boolean(restrictedSubscription),
         message:
           typeof restrictedSubscription?.metadata?.adminMessage === 'string'

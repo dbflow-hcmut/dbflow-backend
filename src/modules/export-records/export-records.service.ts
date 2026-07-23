@@ -127,7 +127,9 @@ export class ExportRecordsService {
       where: { id: recordId, projectId },
     });
     if (!record) throw new NotFoundException('Export record not found');
-    const project = await this.projectsRepo.findOne({ where: { id: projectId } });
+    const project = await this.projectsRepo.findOne({
+      where: { id: projectId },
+    });
     if (!project) throw new NotFoundException('Project not found');
     await this.subscriptionsService.assertFeatureForWorkspace(
       project.workspaceId,

@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { DataSource, EntityManager, Repository } from 'typeorm';
+import { DataSource, EntityManager } from 'typeorm';
 import { WorkspaceMemberEntity } from './entity/workspace-member.entity';
 import { WorkspaceEntity } from './entity/workspace.entity';
 import { WorkspaceInvitationEntity } from './entity/workspace-invitation.entity';

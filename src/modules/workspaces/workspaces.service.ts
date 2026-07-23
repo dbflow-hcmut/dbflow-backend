@@ -143,7 +143,10 @@ export class WorkspacesService {
       where: { userId, workspaceId, status: WorkspaceMemberStatus.Active },
       relations: ['workspace'],
     });
-    if (!membership || membership.workspace.status === WorkspaceStatus.Archived) {
+    if (
+      !membership ||
+      membership.workspace.status === WorkspaceStatus.Archived
+    ) {
       throw new NotFoundException('Workspace not found');
     }
     return { ...membership.workspace, currentUserRole: membership.role };

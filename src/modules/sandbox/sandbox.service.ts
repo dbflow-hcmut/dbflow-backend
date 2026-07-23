@@ -376,7 +376,9 @@ export class SandboxService {
               statement,
             );
           }
-          const { changes } = db.prepare('SELECT changes() AS changes').get() as {
+          const { changes } = db
+            .prepare('SELECT changes() AS changes')
+            .get() as {
             changes: number;
           };
           totalChanges += changes;

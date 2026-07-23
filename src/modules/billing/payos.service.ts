@@ -94,19 +94,39 @@ export class PayOSService {
       .map((key) => {
         const current = data[key];
         if (current === null || current === undefined) return `${key}=`;
-        if (Array.isArray(current)) {
-          return `${key}=${JSON.stringify(
-            current.map((item) =>
-              item && typeof item === 'object'
-                ? Object.fromEntries(Object.entries(item).sort())
-                : item,
-            ),
-          )}`;
-        }
-        return `${key}=${String(current)}`;
+        return `${key}=${this.stringifySignatureValue(current)}`;
       })
       .join('&');
     return this.hmac(value);
+  }
+
+  private stringifySignatureValue(value: unknown): string {
+    if (Array.isArray(value)) {
+      return JSON.stringify(
+        value.map((item: unknown) =>
+          this.isRecord(item)
+            ? Object.fromEntries(
+                Object.keys(item)
+                  .sort()
+                  .map((key) => [key, item[key]]),
+              )
+            : item,
+        ),
+      );
+    }
+    if (
+      typeof value === 'string' ||
+      typeof value === 'number' ||
+      typeof value === 'boolean' ||
+      typeof value === 'bigint'
+    ) {
+      return String(value);
+    }
+    return JSON.stringify(value) ?? '';
+  }
+
+  private isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null;
   }
 
   private hmac(value: string) {

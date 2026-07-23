@@ -36,7 +36,11 @@ describe('UsersService', () => {
         },
         {
           provide: S3Service,
-          useValue: { getPublicUrl: jest.fn((key: string) => `https://bucket.s3.amazonaws.com/${key}`) },
+          useValue: {
+            getPublicUrl: jest.fn(
+              (key: string) => `https://bucket.s3.amazonaws.com/${key}`,
+            ),
+          },
         },
       ],
     }).compile();
