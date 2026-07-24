@@ -121,13 +121,16 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
 
     try {
       const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+      const backendUrl =
+        process.env.BACKEND_URL ||
+        `http://localhost:${process.env.PORT || '3000'}`;
       const link = await this.payosService.createPaymentLink({
         orderCode: payosOrderCode,
         amount,
         description: `DBFLOW ${payosOrderCode}`,
         itemName: `${plan.name} ${dto.billingCycle}`,
         returnUrl: `${frontendUrl}/billing/success?order=${order.orderNumber}`,
-        cancelUrl: `${frontendUrl}/billing/cancel?order=${order.orderNumber}`,
+        cancelUrl: `${backendUrl}/billing/checkout/cancel`,
       });
       order.paymentLinkId = link.paymentLinkId;
       order.checkoutUrl = link.checkoutUrl;
@@ -147,6 +150,30 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
       relations: ['plan'],
       order: { createdAt: 'DESC' },
     });
+  }
+
+  async confirmCheckoutCancel(orderCode: string) {
+    if (!orderCode) throw new BadRequestException('orderCode is required');
+    const order = await this.ordersRepo.findOne({
+      where: { payosOrderCode: orderCode },
+    });
+    if (!order) throw new NotFoundException('Order not found');
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const redirectUrl = `${frontendUrl}/billing/cancel?order=${encodeURIComponent(order.orderNumber)}`;
+    if (order.status === OrderStatus.Canceled) return redirectUrl;
+    if (order.status !== OrderStatus.Pending) {
+      throw new BadRequestException('Only pending orders can be canceled');
+    }
+
+    const paymentLink = await this.payosService.getPaymentLink(orderCode);
+    if (paymentLink.status !== 'CANCELLED') {
+      throw new BadRequestException('Payment is not canceled on PayOS');
+    }
+
+    order.status = OrderStatus.Canceled;
+    order.checkoutUrl = null;
+    await this.ordersRepo.save(order);
+    return redirectUrl;
   }
 
   async cancelOrder(userId: string, workspaceId: string, orderId: string) {
@@ -235,13 +262,16 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
 
     try {
       const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+      const backendUrl =
+        process.env.BACKEND_URL ||
+        `http://localhost:${process.env.PORT || '3000'}`;
       const link = await this.payosService.createPaymentLink({
         orderCode: payosOrderCode,
         amount,
         description: `DBFLOW ${payosOrderCode}`,
         itemName: `${subscription.plan.name} renewal`,
         returnUrl: `${frontendUrl}/billing/success?order=${order.orderNumber}`,
-        cancelUrl: `${frontendUrl}/billing/cancel?order=${order.orderNumber}`,
+        cancelUrl: `${backendUrl}/billing/checkout/cancel`,
         expiresAt: subscription.currentPeriodEnd,
       });
       order.paymentLinkId = link.paymentLinkId;

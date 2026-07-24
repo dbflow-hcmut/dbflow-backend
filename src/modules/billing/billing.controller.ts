@@ -5,6 +5,8 @@ import {
   Param,
   Patch,
   Post,
+  Query,
+  Redirect,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -30,6 +32,13 @@ export class BillingController {
     @Body() dto: CreateCheckoutDto,
   ) {
     return this.billingService.createCheckout(req.user.id, dto);
+  }
+
+  @Get('checkout/cancel')
+  @Redirect()
+  async confirmCheckoutCancel(@Query('orderCode') orderCode: string) {
+    const url = await this.billingService.confirmCheckoutCancel(orderCode);
+    return { url, statusCode: 302 };
   }
 
   @Get('workspaces/:workspaceId/orders')
