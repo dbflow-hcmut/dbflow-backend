@@ -15,6 +15,13 @@ export interface PayOSWebhook {
   signature: string;
 }
 
+export interface PayOSPaymentLink {
+  id: string;
+  orderCode: number;
+  amount: number;
+  status: 'PENDING' | 'PROCESSING' | 'PAID' | 'CANCELLED';
+}
+
 @Injectable()
 export class PayOSService {
   private readonly baseUrl = 'https://api-merchant.payos.vn';
@@ -61,6 +68,29 @@ export class PayOSService {
     if (!response.ok || payload.code !== '00' || !payload.data) {
       throw new BadGatewayException(
         `PayOS create payment link failed: ${payload.desc || response.statusText}`,
+      );
+    }
+    return payload.data;
+  }
+
+  async getPaymentLink(id: string | number): Promise<PayOSPaymentLink> {
+    const response = await fetch(
+      `${this.baseUrl}/v2/payment-requests/${encodeURIComponent(id)}`,
+      {
+        headers: {
+          'x-client-id': this.requiredEnv('PAYOS_CLIENT_ID'),
+          'x-api-key': this.requiredEnv('PAYOS_API_KEY'),
+        },
+      },
+    );
+    const payload = (await response.json()) as {
+      code?: string;
+      desc?: string;
+      data?: PayOSPaymentLink;
+    };
+    if (!response.ok || payload.code !== '00' || !payload.data) {
+      throw new BadGatewayException(
+        `PayOS get payment link failed: ${payload.desc || response.statusText}`,
       );
     }
     return payload.data;
