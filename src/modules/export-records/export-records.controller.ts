@@ -16,6 +16,7 @@ import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
 import { AuthenticatedRequest } from '@/common/types/request.type';
 import { ExportRecordsService } from './export-records.service';
 import { CreateExportRecordDto } from './dto/create-export-record.dto';
+import { TrackExportUsageDto } from './dto/track-export-usage.dto';
 
 @ApiTags('Export Records')
 @ApiCookieAuth()
@@ -38,6 +39,16 @@ export class ExportRecordsController {
     @Body(new ValidationPipe({ whitelist: true })) dto: CreateExportRecordDto,
   ) {
     return this.service.create(req.user.id, projectId, dto);
+  }
+
+  @Post('usage')
+  @ApiOperation({ summary: 'Record a completed client-side export' })
+  async trackUsage(
+    @Req() req: AuthenticatedRequest,
+    @Param('projectId') projectId: string,
+    @Body(new ValidationPipe({ whitelist: true })) dto: TrackExportUsageDto,
+  ) {
+    return this.service.trackClientExport(req.user.id, projectId, dto);
   }
 
   @Delete(':recordId')

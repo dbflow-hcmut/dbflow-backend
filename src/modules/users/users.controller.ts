@@ -38,6 +38,7 @@ export class UsersController {
         phone: { type: 'string' },
         bio: { type: 'string' },
         avatar: { type: 'string' },
+        role: { type: 'string' },
       },
     },
   })

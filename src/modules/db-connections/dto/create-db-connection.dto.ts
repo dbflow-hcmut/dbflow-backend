@@ -8,6 +8,7 @@ import {
   MaxLength,
   Min,
   Max,
+  IsUUID,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
@@ -17,6 +18,15 @@ import {
 } from '@/common/enums/db-connection.enum';
 
 export class CreateDbConnectionDto {
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description:
+      'Workspace that owns the connection. Defaults to the personal workspace.',
+  })
+  @IsOptional()
+  @IsUUID()
+  workspaceId?: string;
+
   @ApiProperty({ example: 'Production PostgreSQL' })
   @IsString()
   @IsNotEmpty()

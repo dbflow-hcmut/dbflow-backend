@@ -5,6 +5,8 @@ import { AuthService } from './auth.service';
 import { UsersService } from '@/modules/users/users.service';
 import { UserEntity } from '@/modules/users/user.entity';
 import { Role } from '@/common/enums/role.enum';
+import { WorkspacesService } from '@/modules/workspaces/workspaces.service';
+import { UserStatus } from '@/common/enums/user-status.enum';
 
 jest.mock('bcryptjs', () => ({
   compare: jest.fn(),
@@ -31,6 +33,12 @@ describe('AuthService', () => {
           provide: JwtService,
           useValue: {
             signAsync: jest.fn(),
+          },
+        },
+        {
+          provide: WorkspacesService,
+          useValue: {
+            ensurePersonalWorkspace: jest.fn(),
           },
         },
       ],
@@ -60,6 +68,9 @@ describe('AuthService', () => {
         bio: '',
         password: 'hash',
         role: Role.User,
+        status: UserStatus.Active,
+        suspendedAt: null,
+        suspendedReason: null,
         createdAt: new Date(),
         updatedAt: new Date(),
       } as UserEntity);
@@ -81,6 +92,9 @@ describe('AuthService', () => {
         avatarKey: null,
         password: 'hash',
         role: Role.User,
+        status: UserStatus.Active,
+        suspendedAt: null,
+        suspendedReason: null,
         createdAt: new Date(),
         updatedAt: new Date(),
       };

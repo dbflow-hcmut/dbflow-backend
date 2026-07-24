@@ -17,6 +17,14 @@ export interface GenerateSqlPayload {
   project_id?: string;
 }
 
+export interface GenerateSqlResult {
+  sql: string;
+  usage?: {
+    input_tokens?: number;
+    output_tokens?: number;
+  };
+}
+
 @Injectable()
 export class AiIngestionService {
   private readonly logger = new Logger(AiIngestionService.name);
@@ -39,7 +47,7 @@ export class AiIngestionService {
     }
   }
 
-  async generateSql(payload: GenerateSqlPayload): Promise<{ sql: string }> {
+  async generateSql(payload: GenerateSqlPayload): Promise<GenerateSqlResult> {
     const res = await fetch(`${this.baseUrl}/api/text-to-sql`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -50,7 +58,7 @@ export class AiIngestionService {
       const text = await res.text().catch(() => res.status.toString());
       throw new Error(`AI text-to-sql failed [${res.status}]: ${text}`);
     }
-    return res.json() as Promise<{ sql: string }>;
+    return res.json() as Promise<GenerateSqlResult>;
   }
 
   async removeDocument(documentId: string, projectId: string): Promise<void> {

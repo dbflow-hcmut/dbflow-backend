@@ -1,8 +1,13 @@
-import { IsInt, IsOptional, IsString, Min } from 'class-validator';
+import { IsInt, IsOptional, IsString, IsUUID, Min } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 
 export class GetProjectDto {
+  @ApiProperty({ required: false, format: 'uuid' })
+  @IsUUID()
+  @IsOptional()
+  workspaceId?: string;
+
   @ApiProperty({ example: 'keyword', required: false })
   @IsString()
   @IsOptional()

@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { Role } from '@/common/enums/role.enum';
 import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
 
@@ -34,6 +35,7 @@ describe('UsersController', () => {
       bio: '',
       avatar:
         'https://www.gravatar.com/avatar/8c9a15b0f0e6c588d08e8e5f8f5e5e5e?s=200&d=identicon&r=g',
+      role: Role.User,
     });
     const req = { user: { id: '1' } } as unknown as Parameters<
       UsersController['getProfile']

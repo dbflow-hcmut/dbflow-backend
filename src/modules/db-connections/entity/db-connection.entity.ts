@@ -14,6 +14,7 @@ import {
   DbConnectionStatus,
   SshAuthType,
 } from '@/common/enums/db-connection.enum';
+import { WorkspaceEntity } from '@/modules/workspaces/entity/workspace.entity';
 
 @Entity('db_connections')
 export class DbConnectionEntity {
@@ -22,6 +23,9 @@ export class DbConnectionEntity {
 
   @Column({ name: 'created_by', type: 'uuid', nullable: false })
   createdBy: string;
+
+  @Column({ name: 'workspace_id', type: 'uuid', nullable: false })
+  workspaceId: string;
 
   @Column({ type: 'varchar', length: 255, nullable: false })
   name: string;
@@ -130,4 +134,8 @@ export class DbConnectionEntity {
   @ManyToOne(() => UserEntity, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'created_by' })
   creator: UserEntity;
+
+  @ManyToOne(() => WorkspaceEntity, { onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'workspace_id' })
+  workspace: WorkspaceEntity;
 }

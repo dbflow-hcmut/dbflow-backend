@@ -1,4 +1,5 @@
 import { Role } from '@/common/enums/role.enum';
+import { UserStatus } from '@/common/enums/user-status.enum';
 import { Exclude } from 'class-transformer';
 import {
   Entity,
@@ -46,6 +47,20 @@ export class UserEntity {
     default: Role.User,
   })
   role: Role;
+
+  @Column({
+    type: 'enum',
+    enum: UserStatus,
+    enumName: 'user_status',
+    default: UserStatus.Active,
+  })
+  status: UserStatus;
+
+  @Column({ name: 'suspended_at', type: 'timestamptz', nullable: true })
+  suspendedAt: Date | null;
+
+  @Column({ name: 'suspended_reason', type: 'text', nullable: true })
+  suspendedReason: string | null;
 
   @CreateDateColumn({
     name: 'created_at',

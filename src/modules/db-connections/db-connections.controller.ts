@@ -28,6 +28,7 @@ import { TestDbConnectionDto } from './dto/test-db-connection.dto';
 import { ExecuteQueryDto } from './dto/execute-query.dto';
 import { LinkDbConnectionDto } from './dto/link-db-connection.dto';
 import { GenerateSqlDto } from './dto/generate-sql.dto';
+import { ListDbConnectionsDto } from './dto/list-db-connections.dto';
 
 @ApiTags('DB Connections')
 @ApiCookieAuth()
@@ -49,9 +50,14 @@ export class DbConnectionsController {
   }
 
   @Get('db-connections')
-  @ApiOperation({ summary: 'List all connections owned by current user' })
-  async findAllMine(@Req() req: AuthenticatedRequest) {
-    return this.service.findAllByUser(req.user.id);
+  @ApiOperation({
+    summary: 'List current user connections or connections in a workspace',
+  })
+  async findAllMine(
+    @Req() req: AuthenticatedRequest,
+    @Query() query: ListDbConnectionsDto,
+  ) {
+    return this.service.findAll(req.user.id, query.workspaceId);
   }
 
   @Get('db-connections/:connId')
