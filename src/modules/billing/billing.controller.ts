@@ -6,12 +6,12 @@ import {
   Patch,
   Post,
   Query,
-  Redirect,
   Req,
+  Res,
   UseGuards,
 } from '@nestjs/common';
 import { ApiCookieAuth, ApiTags } from '@nestjs/swagger';
-import { Request } from 'express';
+import { Request, Response } from 'express';
 import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
 import { BillingService } from './billing.service';
 import { CreateCheckoutDto } from './dto/create-checkout.dto';
@@ -35,10 +35,12 @@ export class BillingController {
   }
 
   @Get('checkout/cancel')
-  @Redirect()
-  async confirmCheckoutCancel(@Query('orderCode') orderCode: string) {
+  async confirmCheckoutCancel(
+    @Query('orderCode') orderCode: string,
+    @Res() response: Response,
+  ) {
     const url = await this.billingService.confirmCheckoutCancel(orderCode);
-    return { url, statusCode: 302 };
+    return response.redirect(302, url);
   }
 
   @Get('workspaces/:workspaceId/orders')
