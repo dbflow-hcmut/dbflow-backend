@@ -67,7 +67,7 @@ export class AiIngestionService {
     return res.json() as Promise<GenerateSqlResult>;
   }
 
-  async getDefaultModel(): Promise<string | null> {
+  getDefaultModel(): string | null {
     return this.config.get<string>('API_MODEL')?.trim() || null;
   }
 

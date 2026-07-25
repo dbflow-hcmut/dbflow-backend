@@ -670,7 +670,7 @@ export class AdminService {
     });
     const needsDefault = plans.some((plan) => !plan.aiModel);
     const defaultModel = needsDefault
-      ? await this.aiIngestionService.getDefaultModel()
+      ? this.aiIngestionService.getDefaultModel()
       : null;
     return plans.map((plan) => ({
       ...plan,
@@ -678,10 +678,10 @@ export class AdminService {
     }));
   }
 
-  private async withEffectiveAiModel(plan: PlanEntity) {
+  private withEffectiveAiModel(plan: PlanEntity) {
     const defaultModel = plan.aiModel
       ? null
-      : await this.aiIngestionService.getDefaultModel();
+      : this.aiIngestionService.getDefaultModel();
     return {
       ...plan,
       effectiveAiModel: plan.aiModel || defaultModel,
