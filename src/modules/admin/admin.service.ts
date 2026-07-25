@@ -699,7 +699,7 @@ export class AdminService {
       name: dto.name,
       description: dto.description ?? null,
       workspaceType: dto.workspaceType,
-      currency: dto.currency ?? 'USD',
+      currency: 'VND',
       monthlyBasePrice: dto.monthlyBasePrice,
       yearlyBasePrice: dto.yearlyBasePrice,
       monthlySeatPrice: dto.monthlySeatPrice ?? null,
@@ -747,6 +747,7 @@ export class AdminService {
     if (dto.aiModel !== undefined) {
       dto.aiModel = dto.aiModel?.trim() || null;
     }
+    dto.currency = 'VND';
     Object.assign(plan, dto);
     const saved = await this.plansRepo.save(plan);
     await this.auditRepo.save(

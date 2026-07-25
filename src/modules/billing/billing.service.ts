@@ -7,7 +7,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Between, DataSource, LessThanOrEqual, Repository } from 'typeorm';
+import { Between, DataSource, In, LessThanOrEqual, Repository } from 'typeorm';
 import * as crypto from 'crypto';
 import { PlanEntity } from '@/modules/subscriptions/entity/plan.entity';
 import { SubscriptionEntity } from '@/modules/subscriptions/entity/subscription.entity';
@@ -84,6 +84,30 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
       plan.workspaceType !== PlanWorkspaceType.Any
     ) {
       throw new BadRequestException('Plan does not support this workspace');
+    }
+    if (workspace) {
+      const currentSubscription = await this.dataSource
+        .getRepository(SubscriptionEntity)
+        .findOne({
+          where: {
+            workspaceId: workspace.id,
+            status: In([
+              SubscriptionStatus.Trialing,
+              SubscriptionStatus.Active,
+              SubscriptionStatus.PastDue,
+            ]),
+          },
+          relations: ['plan'],
+          order: { createdAt: 'DESC' },
+        });
+      if (
+        currentSubscription &&
+        plan.displayOrder < currentSubscription.plan.displayOrder
+      ) {
+        throw new BadRequestException(
+          'Cannot purchase a plan lower than the current plan',
+        );
+      }
     }
     if (!workspace && !dto.workspaceName?.trim()) {
       throw new BadRequestException('Workspace name is required');
