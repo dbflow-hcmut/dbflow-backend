@@ -37,7 +37,7 @@ export class PlanEntity {
   })
   workspaceType: PlanWorkspaceType;
 
-  @Column({ type: 'varchar', length: 3, default: 'USD' })
+  @Column({ type: 'varchar', length: 3, default: 'VND' })
   currency: string;
 
   @Column({
