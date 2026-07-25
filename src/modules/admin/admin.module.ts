@@ -14,6 +14,7 @@ import { DbConnectionEntity } from '@/modules/db-connections/entity/db-connectio
 import { ExportRecordEntity } from '@/modules/export-records/entity/export-record.entity';
 import { UsageEventEntity } from '@/modules/usage/entity/usage-event.entity';
 import { BillingModule } from '@/modules/billing/billing.module';
+import { AiIngestionModule } from '@/modules/ai-ingestion/ai-ingestion.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { BillingModule } from '@/modules/billing/billing.module';
     ]),
     S3Module,
     BillingModule,
+    AiIngestionModule,
   ],
   controllers: [AdminManagementController],
   providers: [AdminService],

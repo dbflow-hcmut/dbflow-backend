@@ -67,6 +67,11 @@ export class UsageService implements OnModuleInit, OnModuleDestroy {
         workspaceId,
       );
     const limit = subscription.plan.limits[metric];
+    const modelName =
+      subscription.plan.aiModel?.trim() || process.env.API_MODEL?.trim();
+    if (metric === 'ai_requests_monthly' && !modelName) {
+      throw new Error('API_MODEL is required');
+    }
     const periodKey = this.currentPeriodKey();
 
     return this.dataSource.transaction(async (manager) => {
@@ -108,7 +113,7 @@ export class UsageService implements OnModuleInit, OnModuleDestroy {
         operationId,
         periodKey,
         status: UsageEventStatus.Reserved,
-        metadata,
+        metadata: { ...metadata, modelName: modelName || null },
       });
       return manager.getRepository(UsageEventEntity).save(event);
     });
@@ -124,7 +129,12 @@ export class UsageService implements OnModuleInit, OnModuleDestroy {
 
   async recordTokenUsage(
     operationId: string,
-    usage: { inputTokens: number; outputTokens: number; modelCalls: number },
+    usage: {
+      inputTokens: number;
+      outputTokens: number;
+      modelCalls: number;
+      modelName?: string | null;
+    },
   ) {
     await this.eventsRepo.update(
       { operationId },
@@ -132,6 +142,7 @@ export class UsageService implements OnModuleInit, OnModuleDestroy {
         inputTokens: String(Math.max(0, Math.round(usage.inputTokens))),
         outputTokens: String(Math.max(0, Math.round(usage.outputTokens))),
         modelCalls: Math.max(0, Math.round(usage.modelCalls)),
+        modelName: usage.modelName?.trim() || null,
       },
     );
   }

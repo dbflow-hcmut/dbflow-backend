@@ -56,6 +56,14 @@ export class UsageEventEntity {
   @Column({ name: 'model_calls', type: 'integer', default: 0 })
   modelCalls: number;
 
+  @Column({
+    name: 'model_name',
+    type: 'varchar',
+    length: 120,
+    nullable: true,
+  })
+  modelName: string | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz', precision: 6 })
   createdAt: Date;
 

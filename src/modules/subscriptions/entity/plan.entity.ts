@@ -85,6 +85,9 @@ export class PlanEntity {
   @Column({ type: 'jsonb', default: () => "'{}'::jsonb" })
   features: PlanFeatures;
 
+  @Column({ name: 'ai_model', type: 'varchar', length: 120, nullable: true })
+  aiModel: string | null;
+
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;
 

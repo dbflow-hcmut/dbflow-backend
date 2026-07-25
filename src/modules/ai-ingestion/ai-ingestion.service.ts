@@ -8,6 +8,7 @@ interface IngestPayload {
   mimeType: string;
   fileName: string;
   title: string;
+  model_name?: string;
 }
 
 export interface GenerateSqlPayload {
@@ -15,6 +16,7 @@ export interface GenerateSqlPayload {
   dbms: string;
   schema_tables: unknown[];
   project_id?: string;
+  model_name?: string;
 }
 
 export interface GenerateSqlResult {
@@ -22,6 +24,7 @@ export interface GenerateSqlResult {
   usage?: {
     input_tokens?: number;
     output_tokens?: number;
+    model_name?: string;
   };
 }
 
@@ -38,7 +41,10 @@ export class AiIngestionService {
     const res = await fetch(`${this.baseUrl}/api/ingest`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        ...payload,
+        model_name: payload.model_name || this.requiredDefaultModel(),
+      }),
       signal: AbortSignal.timeout(120_000),
     });
     if (!res.ok) {
@@ -59,6 +65,16 @@ export class AiIngestionService {
       throw new Error(`AI text-to-sql failed [${res.status}]: ${text}`);
     }
     return res.json() as Promise<GenerateSqlResult>;
+  }
+
+  async getDefaultModel(): Promise<string | null> {
+    return this.config.get<string>('API_MODEL')?.trim() || null;
+  }
+
+  private requiredDefaultModel() {
+    const model = this.config.get<string>('API_MODEL')?.trim();
+    if (!model) throw new Error('API_MODEL is required');
+    return model;
   }
 
   async removeDocument(documentId: string, projectId: string): Promise<void> {
