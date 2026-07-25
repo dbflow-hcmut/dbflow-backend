@@ -415,7 +415,7 @@ export class DbConnectionsService {
     };
 
     const operationId = crypto.randomUUID();
-    await this.usageService.reserve(
+    const reservation = await this.usageService.reserve(
       userId,
       conn.workspaceId,
       'ai_requests_monthly',
@@ -423,6 +423,11 @@ export class DbConnectionsService {
       1,
       { type: 'text_to_sql', connectionId: connId },
     );
+    const configuredModel = reservation.metadata.modelName;
+    if (typeof configuredModel !== 'string' || !configuredModel) {
+      throw new Error('AI model was not resolved');
+    }
+    payload.model_name = configuredModel;
     try {
       const result = await this.aiIngestionService.generateSql(payload);
       await this.usageService.commit(operationId);
@@ -431,6 +436,7 @@ export class DbConnectionsService {
           inputTokens: result.usage?.input_tokens ?? 0,
           outputTokens: result.usage?.output_tokens ?? 0,
           modelCalls: 1,
+          modelName: result.usage?.model_name,
         })
         .catch(() => undefined);
       return { sql: result.sql };

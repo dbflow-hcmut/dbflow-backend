@@ -32,6 +32,7 @@ import {
   UsageEventEntity,
   UsageEventStatus,
 } from '@/modules/usage/entity/usage-event.entity';
+import { AiIngestionService } from '@/modules/ai-ingestion/ai-ingestion.service';
 
 export type AnalyticsBucket = 'day' | 'week' | 'month';
 
@@ -59,6 +60,7 @@ export class AdminService {
     @InjectRepository(ExportRecordEntity)
     private readonly exportRepo: Repository<ExportRecordEntity>,
     private readonly s3Service: S3Service,
+    private readonly aiIngestionService: AiIngestionService,
   ) {}
 
   async dashboard() {
@@ -280,29 +282,97 @@ export class AdminService {
       .addSelect('COALESCE(SUM(usage.modelCalls), 0)', 'modelCalls')
       .addSelect('COALESCE(SUM(usage.inputTokens), 0)', 'inputTokens')
       .addSelect('COALESCE(SUM(usage.outputTokens), 0)', 'outputTokens')
+      .addSelect(`COALESCE(usage.modelName, 'Unknown')`, 'modelName')
       .where('usage.createdAt BETWEEN :from AND :to', { from, to })
       .andWhere('usage.metric = :metric', { metric: 'ai_requests_monthly' })
       .andWhere('usage.status = :status', {
         status: UsageEventStatus.Committed,
       })
       .groupBy(`DATE_TRUNC('${bucket}', usage.createdAt)`)
+      .addGroupBy('usage.modelName')
       .orderBy(`DATE_TRUNC('${bucket}', usage.createdAt)`, 'ASC')
       .getRawMany<{
         period: string;
+        modelName: string;
         credits: string;
         modelCalls: string;
         inputTokens: string;
         outputTokens: string;
       }>();
 
-    const aiSeries = aiRows.map((row) => ({
+    const toAiPoint = (row: (typeof aiRows)[number]) => ({
       period: row.period,
       credits: Number(row.credits),
       modelCalls: Number(row.modelCalls),
       inputTokens: Number(row.inputTokens),
       outputTokens: Number(row.outputTokens),
       totalTokens: Number(row.inputTokens) + Number(row.outputTokens),
-    }));
+    });
+    const aiSeriesByPeriod = new Map<string, ReturnType<typeof toAiPoint>>();
+    for (const row of aiRows) {
+      const point = toAiPoint(row);
+      const current = aiSeriesByPeriod.get(row.period);
+      aiSeriesByPeriod.set(row.period, {
+        period: row.period,
+        credits: (current?.credits ?? 0) + point.credits,
+        modelCalls: (current?.modelCalls ?? 0) + point.modelCalls,
+        inputTokens: (current?.inputTokens ?? 0) + point.inputTokens,
+        outputTokens: (current?.outputTokens ?? 0) + point.outputTokens,
+        totalTokens: (current?.totalTokens ?? 0) + point.totalTokens,
+      });
+    }
+    const aiSeries = [...aiSeriesByPeriod.values()];
+    const buildModelSeries = (rows: typeof aiRows) =>
+      [...new Set(rows.map((row) => row.modelName))].sort().map((modelName) => {
+        const series = rows
+          .filter((row) => row.modelName === modelName)
+          .map(toAiPoint);
+        return {
+          modelName,
+          totalCredits: series.reduce((sum, item) => sum + item.credits, 0),
+          totalModelCalls: series.reduce(
+            (sum, item) => sum + item.modelCalls,
+            0,
+          ),
+          totalInputTokens: series.reduce(
+            (sum, item) => sum + item.inputTokens,
+            0,
+          ),
+          totalOutputTokens: series.reduce(
+            (sum, item) => sum + item.outputTokens,
+            0,
+          ),
+          totalTokens: series.reduce((sum, item) => sum + item.totalTokens, 0),
+          series,
+        };
+      });
+    const modelSeries = buildModelSeries(aiRows);
+    const dailyModelRows =
+      bucket === 'day'
+        ? aiRows
+        : await this.usageEventsRepo
+            .createQueryBuilder('usage')
+            .select(
+              `TO_CHAR(DATE_TRUNC('day', usage.createdAt), 'YYYY-MM-DD')`,
+              'period',
+            )
+            .addSelect('COUNT(usage.id)', 'credits')
+            .addSelect('COALESCE(SUM(usage.modelCalls), 0)', 'modelCalls')
+            .addSelect('COALESCE(SUM(usage.inputTokens), 0)', 'inputTokens')
+            .addSelect('COALESCE(SUM(usage.outputTokens), 0)', 'outputTokens')
+            .addSelect(`COALESCE(usage.modelName, 'Unknown')`, 'modelName')
+            .where('usage.createdAt BETWEEN :from AND :to', { from, to })
+            .andWhere('usage.metric = :metric', {
+              metric: 'ai_requests_monthly',
+            })
+            .andWhere('usage.status = :status', {
+              status: UsageEventStatus.Committed,
+            })
+            .groupBy(`DATE_TRUNC('day', usage.createdAt)`)
+            .addGroupBy('usage.modelName')
+            .orderBy(`DATE_TRUNC('day', usage.createdAt)`, 'ASC')
+            .getRawMany<(typeof aiRows)[number]>();
+    const dailyModelSeries = buildModelSeries(dailyModelRows);
 
     // Real DB Connection DBMS Breakdown
     const dbEngineRows = await this.dbConnRepo
@@ -389,6 +459,8 @@ export class AdminService {
         ),
         totalTokens: aiSeries.reduce((sum, item) => sum + item.totalTokens, 0),
         series: aiSeries,
+        models: modelSeries,
+        dailyModels: dailyModelSeries,
       },
       dbEngineBreakdown: dbEngines,
       planDistribution,
@@ -592,8 +664,28 @@ export class AdminService {
     subscription.canceledAt = new Date();
   }
 
-  listPlans() {
-    return this.plansRepo.find({ order: { displayOrder: 'ASC' } });
+  async listPlans() {
+    const plans = await this.plansRepo.find({
+      order: { displayOrder: 'ASC' },
+    });
+    const needsDefault = plans.some((plan) => !plan.aiModel);
+    const defaultModel = needsDefault
+      ? this.aiIngestionService.getDefaultModel()
+      : null;
+    return plans.map((plan) => ({
+      ...plan,
+      effectiveAiModel: plan.aiModel || defaultModel,
+    }));
+  }
+
+  private withEffectiveAiModel(plan: PlanEntity) {
+    const defaultModel = plan.aiModel
+      ? null
+      : this.aiIngestionService.getDefaultModel();
+    return {
+      ...plan,
+      effectiveAiModel: plan.aiModel || defaultModel,
+    };
   }
 
   async createPlan(adminUserId: string, dto: CreatePlanDto) {
@@ -615,6 +707,7 @@ export class AdminService {
       includedSeats: dto.includedSeats ?? 1,
       limits: dto.limits ?? {},
       features: dto.features ?? {},
+      aiModel: dto.aiModel?.trim() || null,
       isActive: dto.isActive ?? true,
       displayOrder: dto.displayOrder ?? 0,
     });
@@ -629,7 +722,7 @@ export class AdminService {
         afterData: dto as unknown as Record<string, unknown>,
       }),
     );
-    return saved;
+    return this.withEffectiveAiModel(saved);
   }
 
   async updatePlan(adminUserId: string, planId: string, dto: UpdatePlanDto) {
@@ -649,7 +742,11 @@ export class AdminService {
       displayOrder: plan.displayOrder,
       limits: plan.limits,
       features: plan.features,
+      aiModel: plan.aiModel,
     };
+    if (dto.aiModel !== undefined) {
+      dto.aiModel = dto.aiModel?.trim() || null;
+    }
     Object.assign(plan, dto);
     const saved = await this.plansRepo.save(plan);
     await this.auditRepo.save(
@@ -662,7 +759,7 @@ export class AdminService {
         afterData: dto as Record<string, unknown>,
       }),
     );
-    return saved;
+    return this.withEffectiveAiModel(saved);
   }
 
   listAuditLogs() {

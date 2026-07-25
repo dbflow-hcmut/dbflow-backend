@@ -23,6 +23,7 @@ type TokenUsage = {
   inputTokens: number;
   outputTokens: number;
   modelCalls: number;
+  modelName: string | null;
 };
 
 class StreamTokenCollector {
@@ -39,11 +40,23 @@ class StreamTokenCollector {
   totals(): TokenUsage {
     let inputTokens = 0;
     let outputTokens = 0;
+    const modelNames = new Set<string>();
     for (const usage of this.calls.values()) {
       inputTokens += usage.inputTokens;
       outputTokens += usage.outputTokens;
+      if (usage.modelName) modelNames.add(usage.modelName);
     }
-    return { inputTokens, outputTokens, modelCalls: this.calls.size };
+    return {
+      inputTokens,
+      outputTokens,
+      modelCalls: this.calls.size,
+      modelName:
+        modelNames.size === 1
+          ? [...modelNames][0]
+          : modelNames.size > 1
+            ? 'multiple'
+            : null,
+    };
   }
 
   private consumeEvent(event: string) {
@@ -77,6 +90,7 @@ class StreamTokenCollector {
       this.calls.set(id, {
         inputTokens: Math.max(previous?.inputTokens ?? 0, usage.inputTokens),
         outputTokens: Math.max(previous?.outputTokens ?? 0, usage.outputTokens),
+        modelName: usage.modelName ?? previous?.modelName ?? null,
       });
     }
     Object.values(item).forEach((child) => this.walk(child));
@@ -107,7 +121,20 @@ class StreamTokenCollector {
     if (!Number.isFinite(inputTokens) || !Number.isFinite(outputTokens)) {
       return null;
     }
-    return { inputTokens, outputTokens };
+    const responseMetadata =
+      response && typeof response === 'object'
+        ? (response as Record<string, unknown>)
+        : null;
+    const rawModel =
+      responseMetadata?.model_name ??
+      responseMetadata?.model ??
+      item.model_name ??
+      item.model;
+    const modelName =
+      typeof rawModel === 'string'
+        ? rawModel.replace(/^models\//, '').trim() || null
+        : null;
+    return { inputTokens, outputTokens, modelName };
   }
 }
 
@@ -148,7 +175,7 @@ export class AiGatewayController {
       body.input.workspace_id,
     );
     const operationId = crypto.randomUUID();
-    await this.usageService.reserve(
+    const reservation = await this.usageService.reserve(
       req.user.id,
       workspaceId,
       'ai_requests_monthly',
@@ -156,6 +183,17 @@ export class AiGatewayController {
       1,
       { threadId, projectId: body.input.project_id ?? null },
     );
+    const configuredModel = reservation.metadata.modelName;
+    if (typeof configuredModel !== 'string' || !configuredModel) {
+      throw new Error('AI model was not resolved');
+    }
+    const upstreamBody = {
+      ...body,
+      input: {
+        ...body.input,
+        model_name: configuredModel,
+      },
+    };
 
     const abortController = new AbortController();
     const tokenCollector = new StreamTokenCollector();
@@ -166,7 +204,7 @@ export class AiGatewayController {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
+          body: JSON.stringify(upstreamBody),
           signal: abortController.signal,
         },
       );

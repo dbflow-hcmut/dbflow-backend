@@ -25,4 +25,5 @@ export class UpdatePlanDto {
   @IsOptional() @IsInt() @Min(0) displayOrder?: number;
   @IsOptional() @IsObject() limits?: Record<string, number | null>;
   @IsOptional() @IsObject() features?: Record<string, boolean>;
+  @IsOptional() @IsString() @MaxLength(120) aiModel?: string | null;
 }
