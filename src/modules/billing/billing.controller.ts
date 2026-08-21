@@ -2,20 +2,19 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
   Param,
   Patch,
   Post,
-  Query,
   Req,
-  Res,
   UseGuards,
 } from '@nestjs/common';
 import { ApiCookieAuth, ApiTags } from '@nestjs/swagger';
-import { Request, Response } from 'express';
+import { RawBodyRequest } from '@nestjs/common';
+import { Request } from 'express';
 import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
 import { BillingService } from './billing.service';
 import { CreateCheckoutDto } from './dto/create-checkout.dto';
-import { PayOSWebhook } from './payos.service';
 
 type AuthenticatedRequest = Request & { user: { id: string } };
 
@@ -32,15 +31,6 @@ export class BillingController {
     @Body() dto: CreateCheckoutDto,
   ) {
     return this.billingService.createCheckout(req.user.id, dto);
-  }
-
-  @Get('checkout/cancel')
-  async confirmCheckoutCancel(
-    @Query('orderCode') orderCode: string,
-    @Res() response: Response,
-  ) {
-    const url = await this.billingService.confirmCheckoutCancel(orderCode);
-    return response.redirect(302, url);
   }
 
   @Get('workspaces/:workspaceId/orders')
@@ -64,8 +54,24 @@ export class BillingController {
     return this.billingService.cancelOrder(req.user.id, workspaceId, orderId);
   }
 
-  @Post('webhooks/payos')
-  webhook(@Body() payload: PayOSWebhook) {
-    return this.billingService.processWebhook(payload);
+  @Post('workspaces/:workspaceId/portal')
+  @UseGuards(JwtAuthGuard)
+  @ApiCookieAuth()
+  createBillingPortal(
+    @Req() req: AuthenticatedRequest,
+    @Param('workspaceId') workspaceId: string,
+  ) {
+    return this.billingService.createBillingPortal(req.user.id, workspaceId);
+  }
+
+  @Post('webhooks/stripe')
+  webhook(
+    @Req() req: RawBodyRequest<Request>,
+    @Headers('stripe-signature') signature?: string,
+  ) {
+    if (!req.rawBody || !signature) {
+      throw new Error('Stripe webhook raw body and signature are required');
+    }
+    return this.billingService.processWebhook(req.rawBody, signature);
   }
 }

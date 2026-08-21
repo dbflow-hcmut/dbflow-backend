@@ -22,7 +22,6 @@ import { UpdateUserStatusDto } from './dto/update-user-status.dto';
 import { UpdatePlanDto } from './dto/update-plan.dto';
 import { CreatePlanDto } from './dto/create-plan.dto';
 import { UpdateSubscriptionDto } from './dto/update-subscription.dto';
-import { BillingService } from '@/modules/billing/billing.service';
 
 type AuthenticatedRequest = Request & { user: { id: string } };
 
@@ -34,7 +33,6 @@ type AuthenticatedRequest = Request & { user: { id: string } };
 export class AdminManagementController {
   constructor(
     private readonly adminService: AdminService,
-    private readonly billingService: BillingService,
   ) {}
 
   @Get('dashboard')
@@ -82,16 +80,6 @@ export class AdminManagementController {
   @Get('orders')
   orders() {
     return this.adminService.listOrders();
-  }
-
-  @Post('subscriptions/:subscriptionId/bills')
-  createRenewalBill(@Param('subscriptionId') subscriptionId: string) {
-    return this.billingService.createRenewalOrder(subscriptionId);
-  }
-
-  @Patch('orders/:orderId/cancel')
-  cancelBill(@Param('orderId') orderId: string) {
-    return this.billingService.cancelRenewalOrder(orderId);
   }
 
   @Get('subscriptions')

@@ -17,7 +17,7 @@ export class PaymentTransactionEntity {
   @Column({ name: 'order_id', type: 'uuid' })
   orderId: string;
 
-  @Column({ type: 'varchar', length: 50, default: 'payos' })
+  @Column({ type: 'varchar', length: 50, default: 'stripe' })
   provider: string;
 
   @Column({ name: 'provider_transaction_id', type: 'varchar', unique: true })

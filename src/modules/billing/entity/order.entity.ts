@@ -22,8 +22,11 @@ export class OrderEntity {
   @Column({ name: 'order_number', type: 'varchar', unique: true })
   orderNumber: string;
 
-  @Column({ name: 'payos_order_code', type: 'bigint', unique: true })
-  payosOrderCode: string;
+  @Column({ name: 'provider_checkout_id', type: 'varchar', nullable: true, unique: true })
+  providerCheckoutId: string | null;
+
+  @Column({ name: 'provider_invoice_id', type: 'varchar', nullable: true, unique: true })
+  providerInvoiceId: string | null;
 
   @Column({ name: 'workspace_id', type: 'uuid', nullable: true })
   workspaceId: string | null;

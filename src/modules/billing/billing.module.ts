@@ -7,7 +7,7 @@ import { BillingController } from './billing.controller';
 import { BillingService } from './billing.service';
 import { OrderEntity } from './entity/order.entity';
 import { PaymentTransactionEntity } from './entity/payment-transaction.entity';
-import { PayOSService } from './payos.service';
+import { StripeService } from './stripe.service';
 import { WorkspaceMemberEntity } from '@/modules/workspaces/entity/workspace-member.entity';
 import { MailModule } from '@/modules/mail/mail.module';
 
@@ -24,7 +24,7 @@ import { MailModule } from '@/modules/mail/mail.module';
     MailModule,
   ],
   controllers: [BillingController],
-  providers: [BillingService, PayOSService],
+  providers: [BillingService, StripeService],
   exports: [BillingService],
 })
 export class BillingModule {}
