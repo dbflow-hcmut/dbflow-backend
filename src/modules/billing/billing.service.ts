@@ -14,7 +14,7 @@ import {
   Repository,
 } from 'typeorm';
 import * as crypto from 'crypto';
-import Stripe from 'stripe';
+import * as Stripe from 'stripe';
 import { PlanEntity } from '@/modules/subscriptions/entity/plan.entity';
 import { SubscriptionEntity } from '@/modules/subscriptions/entity/subscription.entity';
 import {
