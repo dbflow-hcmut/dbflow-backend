@@ -1,5 +1,5 @@
 import { BadGatewayException, Injectable } from '@nestjs/common';
-import Stripe = require('stripe');
+import Stripe from 'stripe';
 
 @Injectable()
 export class StripeService {

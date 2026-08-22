@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class ReplacePayOSWithStripe1784786400000
-  implements MigrationInterface
-{
+export class ReplacePayOSWithStripe1784786400000 implements MigrationInterface {
   name = 'ReplacePayOSWithStripe1784786400000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {

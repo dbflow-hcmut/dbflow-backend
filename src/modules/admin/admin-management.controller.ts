@@ -31,9 +31,7 @@ type AuthenticatedRequest = Request & { user: { id: string } };
 @Roles(Role.Admin)
 @Controller('admin')
 export class AdminManagementController {
-  constructor(
-    private readonly adminService: AdminService,
-  ) {}
+  constructor(private readonly adminService: AdminService) {}
 
   @Get('dashboard')
   dashboard() {

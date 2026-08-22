@@ -640,9 +640,7 @@ export class WorkspacesService {
         .getRepository(UserEntity)
         .find({ where: { id: In([userId, target.userId]) } });
       const ownerUser = owningUsers.find((user) => user.id === userId);
-      const targetUser = owningUsers.find(
-        (user) => user.id === target.userId,
-      );
+      const targetUser = owningUsers.find((user) => user.id === target.userId);
 
       owner.role = WorkspaceRole.Admin;
       target.role = WorkspaceRole.Owner;
