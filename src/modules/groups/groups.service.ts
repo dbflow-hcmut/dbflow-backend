@@ -28,15 +28,17 @@ export class GroupsService {
     private readonly auditLogsRepo: Repository<WorkspaceAuditLogEntity>,
   ) {}
 
-  /**
-   * Any active workspace member can list groups (read-only) — needed so a
-   * plain Member can pick a Group while creating a project. Only Owner/Admin
-   * can create/delete groups or manage their membership (see below).
+  /** Owner/Admin can list every Group; other active members only see Groups
+   * they belong to. This keeps Group names and membership private while still
+   * allowing members to select an eligible Group for a project.
    */
   async listGroups(userId: string, workspaceId: string) {
-    await this.assertActiveMember(userId, workspaceId);
+    const membership = await this.requireActiveMember(userId, workspaceId);
+    const canSeeAll = [WorkspaceRole.Owner, WorkspaceRole.Admin].includes(
+      membership.role,
+    );
     const groups = await this.groupsRepo.find({
-      where: { workspaceId },
+      where: canSeeAll ? { workspaceId } : { workspaceId, members: { userId } },
       relations: ['members', 'members.user'],
       order: { createdAt: 'ASC' },
     });
@@ -215,16 +217,17 @@ export class GroupsService {
     }
   }
 
-  private async assertActiveMember(userId: string, workspaceId: string) {
-    const isMember = await this.workspaceMembersRepo.exists({
+  private async requireActiveMember(userId: string, workspaceId: string) {
+    const membership = await this.workspaceMembersRepo.findOne({
       where: {
         userId,
         workspaceId,
         status: WorkspaceMemberStatus.Active,
       },
     });
-    if (!isMember)
+    if (!membership)
       throw new ForbiddenException('Workspace membership required');
+    return membership;
   }
 
   private async logActivity(

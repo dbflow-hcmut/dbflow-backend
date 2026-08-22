@@ -75,11 +75,7 @@ export class ProjectsService {
           'Groups only apply to Team workspace projects',
         );
       }
-      const belongs = await this.groupsService.belongsToWorkspace(
-        dto.groupId,
-        workspace.id,
-      );
-      if (!belongs) throw new NotFoundException('Group not found');
+      await this.assertGroupAssignable(userId, workspace.id, dto.groupId);
       groupId = dto.groupId;
     }
 
@@ -124,13 +120,9 @@ export class ProjectsService {
     return this.formatProjectResponse(projectWithOwner);
   }
 
-  /**
-   * A project is visible in the list when the caller: owns it, has an
-   * explicit user_projects entry (Personal-workspace-style invite), or — for
-   * Team-workspace projects — is Owner/Admin of the workspace (always sees
-   * everything), or the project has no Group (whole team can see it), or the
-   * caller belongs to the project's Group. See `assertTeamProjectAccess` for
-   * the same rule applied to a single project.
+  /** Personal projects use owner/user_projects ACL. Team projects use only
+   * active workspace role + Group membership; being their creator does not
+   * bypass Group visibility.
    */
   async getAllProjects(userId: string, query?: GetProjectDto) {
     const page = query?.page || 1;
@@ -142,33 +134,37 @@ export class ProjectsService {
       .leftJoinAndSelect('project.owner', 'owner')
       .where(
         `(
-          project.owner_id = :userId
-          OR EXISTS (
-            SELECT 1 FROM user_projects up
-            WHERE up.project_id = project.id AND up.user_id = :userId
-          )
-          OR EXISTS (
-            SELECT 1 FROM workspace_members wm
-            WHERE wm.workspace_id = project.workspace_id
-              AND wm.user_id = :userId
-              AND wm.status = 'active'
-              AND wm.role IN ('owner', 'admin')
-          )
-          OR (
-            project.group_id IS NULL
-            AND EXISTS (
-              SELECT 1 FROM workspace_members wm2
-              WHERE wm2.workspace_id = project.workspace_id
-                AND wm2.user_id = :userId
-                AND wm2.status = 'active'
+          (
+            EXISTS (
+              SELECT 1 FROM workspaces personal_workspace
+              WHERE personal_workspace.id = project.workspace_id
+                AND personal_workspace.type = 'personal'
+            )
+            AND (
+              project.owner_id = :userId
+              OR EXISTS (
+                SELECT 1 FROM user_projects up
+                WHERE up.project_id = project.id AND up.user_id = :userId
+              )
             )
           )
-          OR (
-            project.group_id IS NOT NULL
-            AND EXISTS (
-              SELECT 1 FROM group_members gm
-              WHERE gm.group_id = project.group_id AND gm.user_id = :userId
-            )
+          OR EXISTS (
+            SELECT 1 FROM workspace_members team_member
+            JOIN workspaces team_workspace
+              ON team_workspace.id = team_member.workspace_id
+              AND team_workspace.type = 'team'
+            WHERE team_member.workspace_id = project.workspace_id
+              AND team_member.user_id = :userId
+              AND team_member.status = 'active'
+              AND (
+                team_member.role IN ('owner', 'admin')
+                OR project.group_id IS NULL
+                OR EXISTS (
+                  SELECT 1 FROM group_members gm
+                  WHERE gm.group_id = project.group_id
+                    AND gm.user_id = :userId
+                )
+              )
           )
         )`,
         { userId },
@@ -1105,11 +1101,7 @@ export class ProjectsService {
   ) {
     const project = await this.checkOwnership(userId, projectId);
     if (groupId) {
-      const belongs = await this.groupsService.belongsToWorkspace(
-        groupId,
-        project.workspaceId,
-      );
-      if (!belongs) throw new NotFoundException('Group not found');
+      await this.assertGroupAssignable(userId, project.workspaceId, groupId);
     }
     const previousGroupId = project.groupId;
 
@@ -1126,6 +1118,29 @@ export class ProjectsService {
     );
 
     return { message: 'Project group updated successfully' };
+  }
+
+  private async assertGroupAssignable(
+    userId: string,
+    workspaceId: string,
+    groupId: string,
+  ) {
+    const belongs = await this.groupsService.belongsToWorkspace(
+      groupId,
+      workspaceId,
+    );
+    if (!belongs) throw new NotFoundException('Group not found');
+
+    const canSeeAll = await this.workspacesService.isOwnerOrAdmin(
+      userId,
+      workspaceId,
+    );
+    if (
+      !canSeeAll &&
+      !(await this.groupsService.isUserInGroup(userId, groupId))
+    ) {
+      throw new NotFoundException('Group not found');
+    }
   }
 
   async updateUserPermission(
