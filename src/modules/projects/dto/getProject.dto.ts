@@ -13,6 +13,11 @@ export class GetProjectDto {
   @IsOptional()
   keyword?: string;
 
+  @ApiProperty({ required: false, format: 'uuid' })
+  @IsUUID()
+  @IsOptional()
+  groupId?: string;
+
   @ApiProperty({ example: 1, required: false, default: 1 })
   @Type(() => Number)
   @IsInt()

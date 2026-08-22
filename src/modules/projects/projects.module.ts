@@ -13,6 +13,7 @@ import { MailModule } from '../mail/mail.module';
 import { RedisModule } from '@/redis/redis.module';
 import { WorkspacesModule } from '@/modules/workspaces/workspaces.module';
 import { SubscriptionsModule } from '@/modules/subscriptions/subscriptions.module';
+import { GroupsModule } from '@/modules/groups/groups.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { SubscriptionsModule } from '@/modules/subscriptions/subscriptions.modul
     RedisModule,
     WorkspacesModule,
     SubscriptionsModule,
+    GroupsModule,
   ],
   controllers: [ProjectsController],
   providers: [ProjectsService],

@@ -6,10 +6,13 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, In, Repository } from 'typeorm';
 import * as crypto from 'crypto';
 import { MailService } from '@/modules/mail/mail.service';
 import { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
+import { GroupsService } from '@/modules/groups/groups.service';
+import { S3Service } from '@/modules/s3/s3.service';
+import { resolveAvatarUrl } from '@/common/utils/avatar.util';
 import { UserEntity } from '@/modules/users/user.entity';
 import { InviteWorkspaceMemberDto } from './dto/invite-workspace-member.dto';
 import { TransferWorkspaceOwnershipDto } from './dto/transfer-workspace-ownership.dto';
@@ -22,6 +25,7 @@ import {
 } from './entity/workspace-invitation.entity';
 import { WorkspaceMemberEntity } from './entity/workspace-member.entity';
 import { WorkspaceEntity } from './entity/workspace.entity';
+import { WorkspaceAuditLogEntity } from './entity/workspace-audit-log.entity';
 import {
   WorkspaceMemberStatus,
   WorkspaceRole,
@@ -40,9 +44,13 @@ export class WorkspacesService {
     private readonly invitationsRepo: Repository<WorkspaceInvitationEntity>,
     @InjectRepository(UserEntity)
     private readonly usersRepo: Repository<UserEntity>,
+    @InjectRepository(WorkspaceAuditLogEntity)
+    private readonly auditLogsRepo: Repository<WorkspaceAuditLogEntity>,
     private readonly dataSource: DataSource,
     private readonly mailService: MailService,
     private readonly subscriptionsService: SubscriptionsService,
+    private readonly groupsService: GroupsService,
+    private readonly s3Service: S3Service,
   ) {}
 
   async ensurePersonalWorkspace(user: Pick<UserEntity, 'id' | 'fullName'>) {
@@ -208,6 +216,44 @@ export class WorkspacesService {
     return workspace;
   }
 
+  /**
+   * Whether the user is Owner/Admin of the given workspace. Used to let a
+   * Team workspace's management roles administer any project in the team
+   * (visibility, collaborators), not just projects they personally created.
+   */
+  async isOwnerOrAdmin(userId: string, workspaceId: string): Promise<boolean> {
+    const membership = await this.membersRepo.findOne({
+      where: {
+        userId,
+        workspaceId,
+        status: WorkspaceMemberStatus.Active,
+      },
+    });
+    return Boolean(
+      membership &&
+        [WorkspaceRole.Owner, WorkspaceRole.Admin].includes(membership.role),
+    );
+  }
+
+  /**
+   * The caller's role in a workspace, or null if not an active member.
+   * Used by `ProjectsService` to decide edit-vs-view capability for
+   * Team-workspace projects (Group scoping only decides visibility).
+   */
+  async getMembershipRole(
+    userId: string,
+    workspaceId: string,
+  ): Promise<WorkspaceRole | null> {
+    const membership = await this.membersRepo.findOne({
+      where: {
+        userId,
+        workspaceId,
+        status: WorkspaceMemberStatus.Active,
+      },
+    });
+    return membership?.role ?? null;
+  }
+
   async canReceiveProjectAccess(workspaceId: string, email: string) {
     const workspace = await this.workspacesRepo.findOne({
       where: { id: workspaceId },
@@ -249,6 +295,7 @@ export class WorkspacesService {
       userId: member.userId,
       email: member.user.email,
       fullName: member.user.fullName,
+      avatar: resolveAvatarUrl(member.user, this.s3Service),
       role: member.role,
       status: member.status,
       joinedAt: member.joinedAt,
@@ -320,6 +367,15 @@ export class WorkspacesService {
       membership.workspace.name,
       token,
     );
+    await this.logActivity(
+      workspaceId,
+      userId,
+      'member.invite',
+      'workspace_invitation',
+      invitation.id,
+      null,
+      { email, role: invitation.role },
+    );
     return {
       id: invitation.id,
       email: invitation.email,
@@ -352,6 +408,15 @@ export class WorkspacesService {
     }
     invitation.status = WorkspaceInvitationStatus.Revoked;
     await this.invitationsRepo.save(invitation);
+    await this.logActivity(
+      workspaceId,
+      userId,
+      'invitation.revoke',
+      'workspace_invitation',
+      invitationId,
+      { email: invitation.email, role: invitation.role },
+      null,
+    );
     return { message: 'Invitation revoked successfully' };
   }
 
@@ -429,6 +494,7 @@ export class WorkspacesService {
     }
     const target = await this.membersRepo.findOne({
       where: { workspaceId, userId: targetUserId },
+      relations: ['user'],
     });
     if (!target) throw new NotFoundException('Workspace member not found');
     if (target.role === WorkspaceRole.Owner) {
@@ -442,8 +508,27 @@ export class WorkspacesService {
     ) {
       throw new ForbiddenException('Admins cannot change another admin role');
     }
+    const previousRole = target.role;
     target.role = dto.role;
-    return this.membersRepo.save(target);
+    const saved = await this.membersRepo.save(target);
+    await this.logActivity(
+      workspaceId,
+      actorUserId,
+      'member.role_change',
+      'workspace_member',
+      targetUserId,
+      {
+        role: previousRole,
+        userName: target.user.fullName,
+        userEmail: target.user.email,
+      },
+      {
+        role: dto.role,
+        userName: target.user.fullName,
+        userEmail: target.user.email,
+      },
+    );
+    return saved;
   }
 
   async removeMember(
@@ -460,6 +545,7 @@ export class WorkspacesService {
     }
     const target = await this.membersRepo.findOne({
       where: { workspaceId, userId: targetUserId },
+      relations: ['user'],
     });
     if (!target) throw new NotFoundException('Workspace member not found');
     if (target.role === WorkspaceRole.Owner) {
@@ -471,7 +557,27 @@ export class WorkspacesService {
     ) {
       throw new ForbiddenException('Admins cannot remove another admin');
     }
+    const removedRole = target.role;
+    const removedUserName = target.user.fullName;
+    const removedUserEmail = target.user.email;
     await this.membersRepo.remove(target);
+    await this.groupsService.removeUserFromWorkspaceGroups(
+      workspaceId,
+      targetUserId,
+    );
+    await this.logActivity(
+      workspaceId,
+      actorUserId,
+      'member.remove',
+      'workspace_member',
+      targetUserId,
+      {
+        role: removedRole,
+        userName: removedUserName,
+        userEmail: removedUserEmail,
+      },
+      null,
+    );
     return { message: 'Workspace member removed successfully' };
   }
 
@@ -486,6 +592,7 @@ export class WorkspacesService {
       );
     }
     await this.membersRepo.remove(membership);
+    await this.groupsService.removeUserFromWorkspaceGroups(workspaceId, userId);
     return { message: 'Workspace left successfully' };
   }
 
@@ -529,14 +636,75 @@ export class WorkspacesService {
         where: { id: workspaceId },
         lock: { mode: 'pessimistic_write' },
       });
+      const owningUsers = await manager
+        .getRepository(UserEntity)
+        .find({ where: { id: In([userId, target.userId]) } });
+      const ownerUser = owningUsers.find((user) => user.id === userId);
+      const targetUser = owningUsers.find(
+        (user) => user.id === target.userId,
+      );
 
       owner.role = WorkspaceRole.Admin;
       target.role = WorkspaceRole.Owner;
       workspace.ownerUserId = target.userId;
       await memberRepo.save([owner, target]);
       await workspaceRepo.save(workspace);
+      await manager.getRepository(WorkspaceAuditLogEntity).save(
+        manager.getRepository(WorkspaceAuditLogEntity).create({
+          workspaceId,
+          actorUserId: userId,
+          action: 'ownership.transfer',
+          targetType: 'workspace',
+          targetId: workspaceId,
+          beforeData: {
+            ownerUserId: userId,
+            ownerName: ownerUser?.fullName ?? null,
+            ownerEmail: ownerUser?.email ?? null,
+          },
+          afterData: {
+            ownerUserId: target.userId,
+            ownerName: targetUser?.fullName ?? null,
+            ownerEmail: targetUser?.email ?? null,
+          },
+        }),
+      );
       return workspace;
     });
+  }
+
+  async listAuditLogs(userId: string, workspaceId: string) {
+    const membership = await this.getActiveMembership(userId, workspaceId);
+    if (![WorkspaceRole.Owner, WorkspaceRole.Admin].includes(membership.role)) {
+      throw new ForbiddenException('Workspace admin permission required');
+    }
+    return this.auditLogsRepo.find({
+      where: { workspaceId },
+      relations: ['actor'],
+      order: { createdAt: 'DESC' },
+      take: 200,
+    });
+  }
+
+  async logActivity(
+    workspaceId: string,
+    actorUserId: string,
+    action: string,
+    targetType: string,
+    targetId: string,
+    beforeData: Record<string, unknown> | null = null,
+    afterData: Record<string, unknown> | null = null,
+  ): Promise<void> {
+    await this.auditLogsRepo.save(
+      this.auditLogsRepo.create({
+        workspaceId,
+        actorUserId,
+        action,
+        targetType,
+        targetId,
+        beforeData,
+        afterData,
+      }),
+    );
   }
 
   private async requireManagementPermission(

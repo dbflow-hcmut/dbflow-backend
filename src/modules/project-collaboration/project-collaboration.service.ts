@@ -122,6 +122,15 @@ export class ProjectCollaborationService
             permissionData.permission,
           );
 
+          // Viewer-only access must be enforced here, not just in the REST
+          // API or the client UI — a raw websocket client could otherwise
+          // bypass client-side `canEdit` checks and push Yjs updates
+          // directly. Setting `readOnly` makes Hocuspocus reject sync/update
+          // messages from this connection at the protocol level.
+          if (permissionData.permission === 'viewer') {
+            data.connectionConfig.readOnly = true;
+          }
+
           return {
             user: {
               id: userId,

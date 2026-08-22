@@ -53,6 +53,7 @@ import {
 } from '@/common/dto/error-response.dto';
 import { UpdateSchemaDto } from './dto/updateSchema.dto';
 import { UpdateProjectVisibilityDto } from './dto/updateProjectVisibility.dto';
+import { UpdateProjectGroupDto } from './dto/updateProjectGroup.dto';
 import { UpdateUserPermissionDto } from './dto/updateUserPermission.dto';
 import { InviteUsersDto } from './dto/inviteUsers.dto';
 
@@ -400,6 +401,50 @@ export class ProjectsController {
         userId,
         projectId,
         dto.projectMode,
+      );
+    } catch (error: unknown) {
+      if (error instanceof HttpException) throw error;
+      if (error instanceof Error)
+        throw new InternalServerErrorException(error.message);
+      throw new InternalServerErrorException('Internal server error');
+    }
+  }
+
+  @Patch(':projectId/group')
+  @UseGuards(JwtAuthGuard)
+  @ApiCookieAuth()
+  @ApiOperation({
+    summary: 'Update project Group (Team workspace only)',
+    description:
+      'Scope a Team-workspace project to a Group, or clear it (null) to share with the whole team. Only the creator or a workspace Owner/Admin can perform this action.',
+  })
+  @ApiBody({ type: UpdateProjectGroupDto })
+  @ApiResponse({ status: 200, description: 'Group updated successfully' })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized',
+    type: UnauthorizedResponseDto,
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden',
+    type: ForbiddenResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Project or group not found',
+    type: NotFoundResponseDto,
+  })
+  async updateProjectGroup(
+    @Req() req: AuthenticatedRequest,
+    @Param('projectId') projectId: string,
+    @Body() dto: UpdateProjectGroupDto,
+  ) {
+    try {
+      return await this.projectsService.updateProjectGroup(
+        req.user.id,
+        projectId,
+        dto.groupId ?? null,
       );
     } catch (error: unknown) {
       if (error instanceof HttpException) throw error;

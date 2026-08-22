@@ -77,13 +77,13 @@ export class UsageService implements OnModuleInit, OnModuleDestroy {
     return this.dataSource.transaction(async (manager) => {
       await manager.query(
         `INSERT INTO "usage_counters"
-          ("workspace_id", "metric", "period_key", "used", "reserved")
-         VALUES ($1, $2, $3, 0, 0)
-         ON CONFLICT ("workspace_id", "metric", "period_key") DO NOTHING`,
-        [workspaceId, metric, periodKey],
+          ("workspace_id", "user_id", "metric", "period_key", "used", "reserved")
+         VALUES ($1, $2, $3, $4, 0, 0)
+         ON CONFLICT ("workspace_id", "user_id", "metric", "period_key") DO NOTHING`,
+        [workspaceId, userId, metric, periodKey],
       );
       const counter = await manager.getRepository(UsageCounterEntity).findOne({
-        where: { workspaceId, metric, periodKey },
+        where: { workspaceId, userId, metric, periodKey },
         lock: { mode: 'pessimistic_write' },
       });
       if (!counter) throw new Error('Usage counter could not be created');
@@ -147,10 +147,10 @@ export class UsageService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
-  async getMetric(workspaceId: string, metric: string) {
+  async getMetric(workspaceId: string, userId: string, metric: string) {
     const periodKey = this.currentPeriodKey();
     const counter = await this.countersRepo.findOne({
-      where: { workspaceId, metric, periodKey },
+      where: { workspaceId, userId, metric, periodKey },
     });
     return {
       metric,
@@ -158,6 +158,17 @@ export class UsageService implements OnModuleInit, OnModuleDestroy {
       used: Number(counter?.used ?? 0),
       reserved: Number(counter?.reserved ?? 0),
     };
+  }
+
+  /**
+   * Per-member breakdown of a metric for the current period, one row per
+   * active workspace member (seats with no usage yet still show up at 0).
+   */
+  async getWorkspaceMemberBreakdown(workspaceId: string, metric: string) {
+    const periodKey = this.currentPeriodKey();
+    return this.countersRepo.find({
+      where: { workspaceId, metric, periodKey },
+    });
   }
 
   private async transition(
@@ -174,6 +185,7 @@ export class UsageService implements OnModuleInit, OnModuleDestroy {
       const counter = await manager.getRepository(UsageCounterEntity).findOne({
         where: {
           workspaceId: event.workspaceId,
+          userId: event.userId,
           metric: event.metric,
           periodKey: event.periodKey,
         },

@@ -28,7 +28,12 @@ import { resolveAvatarUrl } from '@/common/utils/avatar.util';
 import Redis from 'ioredis';
 import * as Y from 'yjs';
 import { WorkspacesService } from '@/modules/workspaces/workspaces.service';
+import {
+  WorkspaceRole,
+  WorkspaceType,
+} from '@/modules/workspaces/workspace.enums';
 import { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
+import { GroupsService } from '@/modules/groups/groups.service';
 
 const logger = new Logger('ProjectsService');
 
@@ -51,6 +56,7 @@ export class ProjectsService {
     @Inject('REDIS_CLIENT') private readonly redisClient: Redis,
     private readonly workspacesService: WorkspacesService,
     private readonly subscriptionsService: SubscriptionsService,
+    private readonly groupsService: GroupsService,
   ) {}
 
   async createProject(userId: string, dto: CreateProjectDto) {
@@ -61,18 +67,43 @@ export class ProjectsService {
         )
       : await this.workspacesService.getPersonalWorkspace(userId);
     await this.subscriptionsService.assertProjectQuota(workspace.id);
+
+    let groupId: string | null = null;
+    if (dto.groupId) {
+      if (workspace.type !== WorkspaceType.Team) {
+        throw new BadRequestException(
+          'Groups only apply to Team workspace projects',
+        );
+      }
+      const belongs = await this.groupsService.belongsToWorkspace(
+        dto.groupId,
+        workspace.id,
+      );
+      if (!belongs) throw new NotFoundException('Group not found');
+      groupId = dto.groupId;
+    }
+
     const project = await this.projectsRepository.save({
       ownerId: userId,
       workspaceId: workspace.id,
       name: dto.name,
       description: dto.description ?? null,
+      groupId,
+      // `visibility` only governs access for Personal workspace projects —
+      // Team workspace access is decided by workspace role + Group (see
+      // checkViewPermission/checkWritePermission), so the default here is
+      // inert for Team and just kept for schema simplicity.
     });
 
-    await this.userProjectsRepository.save({
-      userId: userId,
-      projectId: project.id,
-      permission: UserProjectPermission.Editor,
-    });
+    // Personal workspace still uses the per-user ACL table; Team workspace
+    // access is derived from workspace role + Group, so no row is needed.
+    if (workspace.type !== WorkspaceType.Team) {
+      await this.userProjectsRepository.save({
+        userId: userId,
+        projectId: project.id,
+        permission: UserProjectPermission.Editor,
+      });
+    }
 
     if (!dto.skipDefaultSchema) {
       await this.createSchema(userId, project.id, {
@@ -93,16 +124,55 @@ export class ProjectsService {
     return this.formatProjectResponse(projectWithOwner);
   }
 
+  /**
+   * A project is visible in the list when the caller: owns it, has an
+   * explicit user_projects entry (Personal-workspace-style invite), or — for
+   * Team-workspace projects — is Owner/Admin of the workspace (always sees
+   * everything), or the project has no Group (whole team can see it), or the
+   * caller belongs to the project's Group. See `assertTeamProjectAccess` for
+   * the same rule applied to a single project.
+   */
   async getAllProjects(userId: string, query?: GetProjectDto) {
     const page = query?.page || 1;
     const limit = query?.limit || 9;
     const skip = (page - 1) * limit;
 
-    const queryBuilder = this.userProjectsRepository
-      .createQueryBuilder('userProject')
-      .leftJoinAndSelect('userProject.project', 'project')
+    const queryBuilder = this.projectsRepository
+      .createQueryBuilder('project')
       .leftJoinAndSelect('project.owner', 'owner')
-      .where('userProject.userId = :userId', { userId });
+      .where(
+        `(
+          project.owner_id = :userId
+          OR EXISTS (
+            SELECT 1 FROM user_projects up
+            WHERE up.project_id = project.id AND up.user_id = :userId
+          )
+          OR EXISTS (
+            SELECT 1 FROM workspace_members wm
+            WHERE wm.workspace_id = project.workspace_id
+              AND wm.user_id = :userId
+              AND wm.status = 'active'
+              AND wm.role IN ('owner', 'admin')
+          )
+          OR (
+            project.group_id IS NULL
+            AND EXISTS (
+              SELECT 1 FROM workspace_members wm2
+              WHERE wm2.workspace_id = project.workspace_id
+                AND wm2.user_id = :userId
+                AND wm2.status = 'active'
+            )
+          )
+          OR (
+            project.group_id IS NOT NULL
+            AND EXISTS (
+              SELECT 1 FROM group_members gm
+              WHERE gm.group_id = project.group_id AND gm.user_id = :userId
+            )
+          )
+        )`,
+        { userId },
+      );
 
     if (query?.workspaceId) {
       await this.workspacesService.assertActiveMember(
@@ -120,16 +190,22 @@ export class ProjectsService {
       });
     }
 
+    if (query?.groupId) {
+      queryBuilder.andWhere('project.group_id = :groupId', {
+        groupId: query.groupId,
+      });
+    }
+
     const total = await queryBuilder.getCount();
 
-    const userProjects = await queryBuilder
+    const projects = await queryBuilder
       .orderBy('project.updatedAt', 'DESC')
       .skip(skip)
       .take(limit)
       .getMany();
 
-    const items = userProjects.map((userProject) =>
-      this.formatProjectResponse(userProject.project),
+    const items = projects.map((project) =>
+      this.formatProjectResponse(project),
     );
 
     const totalPages = Math.ceil(total / limit);
@@ -147,20 +223,27 @@ export class ProjectsService {
 
   private formatProjectResponse(project: ProjectEntity) {
     const owner = project.owner;
+    // "owner" is kept for backward compatibility; for Team-workspace
+    // projects it no longer means sole authority (see checkOwnership) — it's
+    // just who created it, surfaced again as `createdBy` for clients that
+    // want to stop presenting it as an ownership/authority field.
+    const personSummary = {
+      id: owner.id,
+      name: owner.fullName,
+      email: owner.email,
+      avatar: resolveAvatarUrl(owner, this.s3Service),
+    };
 
     return {
       id: project.id,
       workspaceId: project.workspaceId,
       name: project.name,
-      owner: {
-        id: owner.id,
-        name: owner.fullName,
-        email: owner.email,
-        avatar: resolveAvatarUrl(owner, this.s3Service),
-      },
+      owner: personSummary,
+      createdBy: personSummary,
       createdAt: project.createdAt,
       updatedAt: project.updatedAt,
       visibility: project.visibility,
+      groupId: project.groupId,
       status: 'active',
     };
   }
@@ -232,8 +315,16 @@ export class ProjectsService {
       throw new NotFoundException('Project not found');
     }
 
-    // If user is owner, delete the entire project
-    if (project.ownerId === userId) {
+    // The creator, or a Team workspace's Owner/Admin, can fully delete the
+    // project (it belongs to the team, not just to whoever made it).
+    const canDelete =
+      project.ownerId === userId ||
+      (await this.workspacesService.isOwnerOrAdmin(
+        userId,
+        project.workspaceId,
+      ));
+
+    if (canDelete) {
       // Get all schemas for this project
       const schemas = await this.schemasRepository.find({
         where: { projectId },
@@ -413,6 +504,44 @@ export class ProjectsService {
     return userProject;
   }
 
+  /**
+   * Team-workspace access rule (Group-based, replaces ProjectVisibility for
+   * this branch): Owner/Admin always see everything; otherwise the project
+   * must have no Group (whole team) or the caller must belong to its Group.
+   * Returns the caller's workspace role so callers can also derive
+   * edit-vs-view capability from it.
+   */
+  private async assertTeamProjectAccess(
+    userId: string,
+    project: ProjectEntity,
+    workspaceId: string,
+  ): Promise<WorkspaceRole> {
+    const role = await this.workspacesService.getMembershipRole(
+      userId,
+      workspaceId,
+    );
+    if (!role) {
+      throw new ForbiddenException(
+        'User does not have permission to access this project',
+      );
+    }
+    if (role === WorkspaceRole.Owner || role === WorkspaceRole.Admin) {
+      return role;
+    }
+    if (project.groupId) {
+      const inGroup = await this.groupsService.isUserInGroup(
+        userId,
+        project.groupId,
+      );
+      if (!inGroup) {
+        throw new ForbiddenException(
+          'User does not have permission to access this project',
+        );
+      }
+    }
+    return role;
+  }
+
   async checkViewPermission(userId: string, projectId: string): Promise<void> {
     const projectInfo = await this.projectsRepository.findOne({
       where: { id: projectId },
@@ -421,12 +550,18 @@ export class ProjectsService {
     if (!projectInfo) {
       throw new NotFoundException('Project not found');
     }
-    await this.workspacesService.assertResourceWorkspaceAccess(
-      userId,
-      projectInfo.workspaceId,
-    );
+    const workspace =
+      await this.workspacesService.assertResourceWorkspaceAccess(
+        userId,
+        projectInfo.workspaceId,
+      );
 
-    // Allow public projects
+    if (workspace.type === WorkspaceType.Team) {
+      await this.assertTeamProjectAccess(userId, projectInfo, workspace.id);
+      return;
+    }
+
+    // Personal workspace: unchanged legacy visibility/user_projects logic.
     if (
       projectInfo.visibility === ProjectVisibility.AnyoneCanView ||
       projectInfo.visibility === ProjectVisibility.AnyoneCanEdit
@@ -434,7 +569,6 @@ export class ProjectsService {
       return;
     }
 
-    // For private projects (OwnerAndInvited)
     if (projectInfo.visibility === ProjectVisibility.OwnerAndInvited) {
       const userProject = await this.getUserProjectPermission(
         userId,
@@ -471,36 +605,46 @@ export class ProjectsService {
     if (!projectInfo) {
       throw new NotFoundException('Project not found');
     }
-    await this.workspacesService.assertResourceWorkspaceAccess(
-      userId,
-      projectInfo.workspaceId,
-    );
+    const workspace =
+      await this.workspacesService.assertResourceWorkspaceAccess(
+        userId,
+        projectInfo.workspaceId,
+      );
 
-    // Check if user is owner
+    if (workspace.type === WorkspaceType.Team) {
+      const role = await this.assertTeamProjectAccess(
+        userId,
+        projectInfo,
+        workspace.id,
+      );
+      if (role === WorkspaceRole.Viewer) {
+        throw new ForbiddenException(
+          'You do not have write permission for this project',
+        );
+      }
+      return;
+    }
+
+    // Personal workspace: unchanged legacy visibility/user_projects logic.
     if (userId === projectInfo.ownerId) {
       return;
     }
 
-    // Check user's explicit permission in user_projects table
     const userProject = await this.getUserProjectPermission(userId, projectId);
 
     if (userProject) {
-      // User has explicit permission - must be Editor or owner
       if (userProject.permission === UserProjectPermission.Editor) {
         return;
       }
-      // User is Viewer or other - no write permission
       throw new ForbiddenException(
         'You do not have write permission for this project',
       );
     }
 
-    // No explicit permission - check project visibility
     if (projectInfo.visibility === ProjectVisibility.AnyoneCanEdit) {
       return;
     }
 
-    // Project is private or view-only
     throw new ForbiddenException(
       'You do not have write permission for this project',
     );
@@ -509,15 +653,56 @@ export class ProjectsService {
   async getProjectPermissions(userId: string, projectId: string) {
     const project = await this.projectsRepository.findOne({
       where: { id: projectId },
+      relations: ['workspace'],
     });
 
     if (!project) {
       throw new NotFoundException('Project not found');
     }
 
+    // Team workspace: derive permission from workspace role + Group, the
+    // same rule `checkViewPermission`/`checkWritePermission` enforce — do
+    // NOT fall through to the legacy visibility/user_projects logic below,
+    // which knows nothing about WorkspaceRole.Viewer and would silently
+    // grant edit access to a Viewer via stale/legacy data.
+    if (project.workspace.type === WorkspaceType.Team) {
+      if (!userId) return null;
+      let role: WorkspaceRole;
+      try {
+        role = await this.assertTeamProjectAccess(
+          userId,
+          project,
+          project.workspaceId,
+        );
+      } catch {
+        return null;
+      }
+      const canManage =
+        project.ownerId === userId ||
+        role === WorkspaceRole.Owner ||
+        role === WorkspaceRole.Admin;
+      const permission =
+        project.ownerId === userId
+          ? 'owner'
+          : role === WorkspaceRole.Viewer
+            ? UserProjectPermission.Viewer
+            : UserProjectPermission.Editor;
+      return { permission, canManage };
+    }
+
+    // Personal workspace: unchanged legacy visibility/user_projects logic.
+    const canManage = Boolean(
+      userId &&
+        (project.ownerId === userId ||
+          (await this.workspacesService.isOwnerOrAdmin(
+            userId,
+            project.workspaceId,
+          ))),
+    );
+
     // Check if the user is the owner first
     if (userId && userId === project.ownerId) {
-      return { permission: 'owner' };
+      return { permission: 'owner', canManage };
     }
 
     if (userId) {
@@ -526,7 +711,7 @@ export class ProjectsService {
       });
 
       if (userProject) {
-        return { permission: userProject.permission };
+        return { permission: userProject.permission, canManage };
       }
 
       // Check if user has a pending invitation
@@ -546,6 +731,7 @@ export class ProjectsService {
             permission: 'invited',
             invitationId: invitation.id,
             invitePermission: invitation.permission,
+            canManage,
           };
         }
       }
@@ -553,11 +739,11 @@ export class ProjectsService {
 
     // Check public visibility
     if (project.visibility === ProjectVisibility.AnyoneCanView) {
-      return { permission: UserProjectPermission.Viewer };
+      return { permission: UserProjectPermission.Viewer, canManage };
     }
 
     if (project.visibility === ProjectVisibility.AnyoneCanEdit) {
-      return { permission: UserProjectPermission.Editor };
+      return { permission: UserProjectPermission.Editor, canManage };
     }
 
     return null;
@@ -568,7 +754,7 @@ export class ProjectsService {
 
     const project = await this.projectsRepository.findOne({
       where: { id: projectId },
-      relations: ['owner'],
+      relations: ['owner', 'workspace', 'group'],
     });
 
     if (!project) {
@@ -654,6 +840,10 @@ export class ProjectsService {
 
     return {
       project_mode: project.visibility,
+      workspace_id: project.workspaceId,
+      workspace_type: project.workspace.type,
+      group_id: project.groupId,
+      group_name: project.group?.name ?? null,
       list_users: listUsers,
     };
   }
@@ -840,13 +1030,18 @@ export class ProjectsService {
     };
   }
 
+  /**
+   * A project can be managed (visibility, collaborators) by whoever created
+   * it, or — for Team workspace projects — by the workspace's Owner/Admin,
+   * since Team projects belong to the team rather than to one member.
+   */
   private async checkOwnership(
     userId: string,
     projectId: string,
   ): Promise<ProjectEntity> {
     const project = await this.projectsRepository.findOne({
       where: { id: projectId },
-      relations: ['owner'],
+      relations: ['owner', 'workspace'],
     });
 
     if (!project) {
@@ -858,9 +1053,17 @@ export class ProjectsService {
     );
 
     if (project.ownerId !== userId) {
-      throw new ForbiddenException(
-        'Only the project owner can perform this action',
-      );
+      const canManageAsTeamAdmin =
+        project.workspace.type === WorkspaceType.Team &&
+        (await this.workspacesService.isOwnerOrAdmin(
+          userId,
+          project.workspaceId,
+        ));
+      if (!canManageAsTeamAdmin) {
+        throw new ForbiddenException(
+          'Only the project owner or a workspace admin can perform this action',
+        );
+      }
     }
 
     return project;
@@ -871,13 +1074,58 @@ export class ProjectsService {
     projectId: string,
     visibility: ProjectVisibility,
   ) {
-    await this.checkOwnership(userId, projectId);
+    const project = await this.checkOwnership(userId, projectId);
+    const previousVisibility = project.visibility;
 
     await this.projectsRepository.update(projectId, {
       visibility,
     });
 
+    await this.workspacesService.logActivity(
+      project.workspaceId,
+      userId,
+      'project.visibility_change',
+      'project',
+      projectId,
+      { visibility: previousVisibility },
+      { visibility },
+    );
+
     return { message: 'Project visibility updated successfully' };
+  }
+
+  /**
+   * Team-workspace equivalent of `updateProjectVisibility`: scope a project
+   * to a Group (or clear it, `groupId: null`, to share with the whole team).
+   */
+  async updateProjectGroup(
+    userId: string,
+    projectId: string,
+    groupId: string | null,
+  ) {
+    const project = await this.checkOwnership(userId, projectId);
+    if (groupId) {
+      const belongs = await this.groupsService.belongsToWorkspace(
+        groupId,
+        project.workspaceId,
+      );
+      if (!belongs) throw new NotFoundException('Group not found');
+    }
+    const previousGroupId = project.groupId;
+
+    await this.projectsRepository.update(projectId, { groupId });
+
+    await this.workspacesService.logActivity(
+      project.workspaceId,
+      userId,
+      'project.group_change',
+      'project',
+      projectId,
+      { groupId: previousGroupId },
+      { groupId },
+    );
+
+    return { message: 'Project group updated successfully' };
   }
 
   async updateUserPermission(

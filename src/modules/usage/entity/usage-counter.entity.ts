@@ -5,6 +5,9 @@ export class UsageCounterEntity {
   @PrimaryColumn({ name: 'workspace_id', type: 'uuid' })
   workspaceId: string;
 
+  @PrimaryColumn({ name: 'user_id', type: 'uuid' })
+  userId: string;
+
   @PrimaryColumn({ type: 'varchar', length: 100 })
   metric: string;
 

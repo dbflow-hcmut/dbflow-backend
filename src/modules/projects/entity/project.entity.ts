@@ -13,6 +13,7 @@ import { ProjectVisibility } from '@/common/enums/project-visibility.enum';
 import { UserProjectEntity } from './user-project.entity';
 import { ProjectInvitationEntity } from './project-invitation.entity';
 import { WorkspaceEntity } from '@/modules/workspaces/entity/workspace.entity';
+import { GroupEntity } from '@/modules/groups/entity/group.entity';
 
 @Entity('projects')
 export class ProjectEntity {
@@ -48,6 +49,11 @@ export class ProjectEntity {
   })
   visibility: ProjectVisibility;
 
+  // Team-workspace scoping only (see `groups` module). Ignored for Personal
+  // workspace projects, which keep using `visibility` above instead.
+  @Column({ name: 'group_id', type: 'uuid', nullable: true })
+  groupId: string | null;
+
   @CreateDateColumn({
     name: 'created_at',
     type: 'timestamptz',
@@ -72,6 +78,10 @@ export class ProjectEntity {
   @ManyToOne(() => WorkspaceEntity, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'workspace_id' })
   workspace: WorkspaceEntity;
+
+  @ManyToOne(() => GroupEntity, { onDelete: 'SET NULL', nullable: true })
+  @JoinColumn({ name: 'group_id' })
+  group: GroupEntity | null;
 
   @OneToMany(() => UserProjectEntity, (userProject) => userProject.project)
   userProjects: UserProjectEntity[];

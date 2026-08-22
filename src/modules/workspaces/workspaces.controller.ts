@@ -140,6 +140,15 @@ export class WorkspacesController {
     return this.workspacesService.leaveWorkspace(req.user.id, workspaceId);
   }
 
+  @Get(':workspaceId/audit-logs')
+  @ApiOperation({ summary: 'List workspace activity log (Owner/Admin only)' })
+  auditLogs(
+    @Req() req: AuthenticatedRequest,
+    @Param('workspaceId') workspaceId: string,
+  ) {
+    return this.workspacesService.listAuditLogs(req.user.id, workspaceId);
+  }
+
   @Post(':workspaceId/transfer-ownership')
   @ApiOperation({ summary: 'Transfer team workspace ownership' })
   transferOwnership(

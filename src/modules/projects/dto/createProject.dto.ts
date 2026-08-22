@@ -36,4 +36,13 @@ export class CreateProjectDto {
   @IsOptional()
   @IsBoolean()
   skipDefaultSchema?: boolean;
+
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description:
+      'Team workspace Group to scope this project to. Omit to share with the whole team.',
+  })
+  @IsOptional()
+  @IsUUID()
+  groupId?: string;
 }

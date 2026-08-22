@@ -14,6 +14,7 @@ import { ProjectDocumentsModule } from './modules/project-documents/project-docu
 import { ExportRecordsModule } from './modules/export-records/export-records.module';
 import { SandboxModule } from './modules/sandbox/sandbox.module';
 import { WorkspacesModule } from './modules/workspaces/workspaces.module';
+import { GroupsModule } from './modules/groups/groups.module';
 import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
 import { UsageModule } from './modules/usage/usage.module';
 import { AiGatewayModule } from './modules/ai-gateway/ai-gateway.module';
@@ -47,6 +48,7 @@ import { BillingModule } from './modules/billing/billing.module';
     ExportRecordsModule,
     SandboxModule,
     WorkspacesModule,
+    GroupsModule,
     SubscriptionsModule,
     UsageModule,
     AiGatewayModule,

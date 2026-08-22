@@ -45,4 +45,20 @@ export class SubscriptionsController {
   ) {
     return this.subscriptionsService.getEntitlements(req.user.id, workspaceId);
   }
+
+  @Get('usage/ai-requests')
+  @ApiOperation({
+    summary:
+      'Per-seat AI request usage for the current period. Owner/Admin see every member; others see only themselves.',
+  })
+  getAiUsageBreakdown(
+    @Req() req: AuthenticatedRequest,
+    @Param('workspaceId') workspaceId: string,
+  ) {
+    return this.subscriptionsService.getMemberUsageBreakdown(
+      req.user.id,
+      workspaceId,
+      'ai_requests_monthly',
+    );
+  }
 }

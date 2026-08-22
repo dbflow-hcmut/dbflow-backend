@@ -15,6 +15,7 @@ import { WorkspaceMemberEntity } from '@/modules/workspaces/entity/workspace-mem
 import { WorkspaceEntity } from '@/modules/workspaces/entity/workspace.entity';
 import {
   WorkspaceMemberStatus,
+  WorkspaceRole,
   WorkspaceStatus,
   WorkspaceType,
 } from '@/modules/workspaces/workspace.enums';
@@ -194,6 +195,7 @@ export class SubscriptionsService implements OnModuleInit, OnModuleDestroy {
       this.usageCountersRepo.findOne({
         where: {
           workspaceId,
+          userId,
           metric: 'ai_requests_monthly',
           periodKey: this.currentPeriodKey(),
         },
@@ -207,6 +209,7 @@ export class SubscriptionsService implements OnModuleInit, OnModuleDestroy {
       this.usageCountersRepo.findOne({
         where: {
           workspaceId,
+          userId,
           metric: 'exports_monthly',
           periodKey: this.currentPeriodKey(),
         },
@@ -270,6 +273,62 @@ export class SubscriptionsService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
+  /**
+   * Per-seat breakdown of a usage metric (default: AI requests) for the
+   * current billing period. Owner/Admin see every active member; anyone
+   * else only sees their own row, matching the per-seat quota model (D2) —
+   * each member has an equal, independent allowance, not a shared pool.
+   */
+  async getMemberUsageBreakdown(
+    actorUserId: string,
+    workspaceId: string,
+    metric = 'ai_requests_monthly',
+  ) {
+    const actorMembership = await this.membersRepo.findOne({
+      where: {
+        userId: actorUserId,
+        workspaceId,
+        status: WorkspaceMemberStatus.Active,
+      },
+    });
+    if (!actorMembership) throw new NotFoundException('Workspace not found');
+    const subscription = await this.requireCurrent(workspaceId);
+    const limit = this.getLimit(subscription.plan, metric, null);
+    const periodKey = this.currentPeriodKey();
+    const canViewAll = [WorkspaceRole.Owner, WorkspaceRole.Admin].includes(
+      actorMembership.role,
+    );
+
+    const members = await this.membersRepo.find({
+      where: canViewAll
+        ? { workspaceId, status: WorkspaceMemberStatus.Active }
+        : {
+            workspaceId,
+            status: WorkspaceMemberStatus.Active,
+            userId: actorUserId,
+          },
+      relations: ['user'],
+      order: { joinedAt: 'ASC' },
+    });
+    const counters = await this.usageCountersRepo.find({
+      where: { workspaceId, metric, periodKey },
+    });
+    const counterByUser = new Map(counters.map((c) => [c.userId, c]));
+
+    return members.map((member) => {
+      const counter = counterByUser.get(member.userId);
+      return {
+        userId: member.userId,
+        fullName: member.user.fullName,
+        email: member.user.email,
+        used: Number(counter?.used ?? 0),
+        reserved: Number(counter?.reserved ?? 0),
+        limit,
+        periodKey,
+      };
+    });
+  }
+
   async assertProjectQuota(workspaceId: string) {
     const subscription = await this.requireCurrent(workspaceId);
     const limit = subscription.plan.limits.projects;
@@ -324,7 +383,7 @@ export class SubscriptionsService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  async assertExportQuota(projectId: string) {
+  async assertExportQuota(userId: string, projectId: string) {
     const project = await this.projectsRepo.findOne({
       where: { id: projectId },
     });
@@ -335,6 +394,7 @@ export class SubscriptionsService implements OnModuleInit, OnModuleDestroy {
     const counter = await this.usageCountersRepo.findOne({
       where: {
         workspaceId: project.workspaceId,
+        userId,
         metric: 'exports_monthly',
         periodKey: this.currentPeriodKey(),
       },
