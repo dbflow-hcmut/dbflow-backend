@@ -4,11 +4,14 @@ import { DataSource, EntityManager } from 'typeorm';
 import { WorkspaceMemberEntity } from './entity/workspace-member.entity';
 import { WorkspaceEntity } from './entity/workspace.entity';
 import { WorkspaceInvitationEntity } from './entity/workspace-invitation.entity';
+import { WorkspaceAuditLogEntity } from './entity/workspace-audit-log.entity';
 import { WorkspaceRole, WorkspaceType } from './workspace.enums';
 import { WorkspacesService } from './workspaces.service';
 import { UserEntity } from '@/modules/users/user.entity';
 import { MailService } from '@/modules/mail/mail.service';
 import { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
+import { GroupsService } from '@/modules/groups/groups.service';
+import { S3Service } from '@/modules/s3/s3.service';
 
 type WorkspaceRepoMock = {
   findOne: jest.Mock;
@@ -65,6 +68,10 @@ describe('WorkspacesService', () => {
           useValue: invitationRepo,
         },
         { provide: getRepositoryToken(UserEntity), useValue: userRepo },
+        {
+          provide: getRepositoryToken(WorkspaceAuditLogEntity),
+          useValue: { create: jest.fn(), save: jest.fn() },
+        },
         { provide: DataSource, useValue: dataSource },
         {
           provide: MailService,
@@ -78,6 +85,8 @@ describe('WorkspacesService', () => {
             assertSeatAvailableForAccept: jest.fn(),
           },
         },
+        { provide: GroupsService, useValue: {} },
+        { provide: S3Service, useValue: {} },
       ],
     }).compile();
 
