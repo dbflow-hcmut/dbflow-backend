@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Param,
@@ -290,7 +291,9 @@ export class AiGatewayController {
       );
       return workspaceId;
     }
-    return (await this.workspacesService.getPersonalWorkspace(userId)).id;
+    throw new BadRequestException(
+      'project_id or workspace_id is required to send an AI request',
+    );
   }
 
   private async proxyJson(

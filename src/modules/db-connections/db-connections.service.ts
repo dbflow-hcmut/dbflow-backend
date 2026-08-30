@@ -72,12 +72,15 @@ export class DbConnectionsService {
       }
       workspaceId = project.workspaceId;
     }
-    const workspace = workspaceId
-      ? await this.workspacesService.assertCanCreateResources(
-          userId,
-          workspaceId,
-        )
-      : await this.workspacesService.getPersonalWorkspace(userId);
+    if (!workspaceId) {
+      throw new BadRequestException(
+        'workspaceId or projectId is required to create a DB connection',
+      );
+    }
+    const workspace = await this.workspacesService.assertCanCreateResources(
+      userId,
+      workspaceId,
+    );
     await this.subscriptionsService.assertDbConnectionQuota(workspace.id);
     const entity = this.dbConnectionRepo.create({
       createdBy: userId,

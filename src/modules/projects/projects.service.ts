@@ -60,12 +60,15 @@ export class ProjectsService {
   ) {}
 
   async createProject(userId: string, dto: CreateProjectDto) {
-    const workspace = dto.workspaceId
-      ? await this.workspacesService.assertCanCreateResources(
-          userId,
-          dto.workspaceId,
-        )
-      : await this.workspacesService.getPersonalWorkspace(userId);
+    if (!dto.workspaceId) {
+      throw new BadRequestException(
+        'workspaceId is required to create a project',
+      );
+    }
+    const workspace = await this.workspacesService.assertCanCreateResources(
+      userId,
+      dto.workspaceId,
+    );
     await this.subscriptionsService.assertProjectQuota(workspace.id);
 
     let groupId: string | null = null;
