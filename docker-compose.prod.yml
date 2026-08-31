@@ -41,6 +41,13 @@ services:
       - "${PORT:-3000}:3000"
     depends_on:
       - postgres
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: ${AWS_REGION:-ap-southeast-2}
+        awslogs-group: ${CLOUDWATCH_LOG_GROUP:-/dbflow/backend}
+        awslogs-stream: ${CLOUDWATCH_LOG_STREAM:-production}
+        awslogs-create-group: "true"
 
   prometheus:
     image: prom/prometheus:v2.55.1
