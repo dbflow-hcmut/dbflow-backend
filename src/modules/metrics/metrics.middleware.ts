@@ -13,7 +13,8 @@ export class MetricsMiddleware implements NestMiddleware {
     const start = process.hrtime.bigint();
     res.on('finish', () => {
       const durationSeconds = Number(process.hrtime.bigint() - start) / 1e9;
-      const route = (req.route?.path as string | undefined) ?? req.path;
+      const route =
+        (req.route as { path?: string } | undefined)?.path ?? req.path;
       const labels = {
         method: req.method,
         route,
