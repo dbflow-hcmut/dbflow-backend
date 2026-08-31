@@ -44,7 +44,7 @@ services:
     logging:
       driver: awslogs
       options:
-        awslogs-region: ${AWS_REGION:-ap-southeast-2}
+        awslogs-region: ${CLOUDWATCH_REGION:-us-east-1}
         awslogs-group: ${CLOUDWATCH_LOG_GROUP:-/dbflow/backend}
         awslogs-stream: ${CLOUDWATCH_LOG_STREAM:-production}
         awslogs-create-group: "true"
