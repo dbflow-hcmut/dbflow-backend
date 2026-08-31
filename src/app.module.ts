@@ -19,6 +19,7 @@ import { SubscriptionsModule } from './modules/subscriptions/subscriptions.modul
 import { UsageModule } from './modules/usage/usage.module';
 import { AiGatewayModule } from './modules/ai-gateway/ai-gateway.module';
 import { BillingModule } from './modules/billing/billing.module';
+import { MetricsModule } from './modules/metrics/metrics.module';
 
 @Module({
   imports: [
@@ -53,6 +54,7 @@ import { BillingModule } from './modules/billing/billing.module';
     UsageModule,
     AiGatewayModule,
     BillingModule,
+    MetricsModule,
   ],
   controllers: [],
   providers: [],
