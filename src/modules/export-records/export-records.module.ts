@@ -6,12 +6,14 @@ import { ExportRecordsService } from './export-records.service';
 import { DbConnectionsModule } from '@/modules/db-connections/db-connections.module';
 import { UsageModule } from '@/modules/usage/usage.module';
 import { ProjectEntity } from '@/modules/projects/entity/project.entity';
+import { ProjectsModule } from '@/modules/projects/projects.module';
 import { SubscriptionsModule } from '@/modules/subscriptions/subscriptions.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([ExportRecordEntity, ProjectEntity]),
     DbConnectionsModule,
+    ProjectsModule,
     UsageModule,
     SubscriptionsModule,
   ],

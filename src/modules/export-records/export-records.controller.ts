@@ -27,8 +27,11 @@ export class ExportRecordsController {
 
   @Get()
   @ApiOperation({ summary: 'List export records for a project' })
-  async findAll(@Param('projectId') projectId: string) {
-    return this.service.findByProject(projectId);
+  async findAll(
+    @Req() req: AuthenticatedRequest,
+    @Param('projectId') projectId: string,
+  ) {
+    return this.service.findByProject(req.user.id, projectId);
   }
 
   @Post()
@@ -55,10 +58,11 @@ export class ExportRecordsController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Delete an export record' })
   async remove(
+    @Req() req: AuthenticatedRequest,
     @Param('projectId') projectId: string,
     @Param('recordId') recordId: string,
   ) {
-    await this.service.remove(projectId, recordId);
+    await this.service.remove(req.user.id, projectId, recordId);
     return null;
   }
 

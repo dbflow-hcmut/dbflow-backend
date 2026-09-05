@@ -7,6 +7,7 @@ import { DbConnectionsService } from './db-connections.service';
 import { AiIngestionModule } from '../ai-ingestion/ai-ingestion.module';
 import { WorkspacesModule } from '@/modules/workspaces/workspaces.module';
 import { ProjectEntity } from '@/modules/projects/entity/project.entity';
+import { ProjectsModule } from '@/modules/projects/projects.module';
 import { SubscriptionsModule } from '@/modules/subscriptions/subscriptions.module';
 import { UsageModule } from '@/modules/usage/usage.module';
 
@@ -19,6 +20,7 @@ import { UsageModule } from '@/modules/usage/usage.module';
     ]),
     AiIngestionModule,
     WorkspacesModule,
+    ProjectsModule,
     SubscriptionsModule,
     UsageModule,
   ],

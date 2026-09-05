@@ -15,6 +15,7 @@ import { executeQuery } from '@/modules/db-connections/utils/db-connector.factor
 import { DbConnectionMethod } from '@/common/enums/db-connection.enum';
 import { UsageService } from '@/modules/usage/usage.service';
 import { ProjectEntity } from '@/modules/projects/entity/project.entity';
+import { ProjectsService } from '@/modules/projects/projects.service';
 import { TrackExportUsageDto } from './dto/track-export-usage.dto';
 import { randomUUID } from 'crypto';
 import { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
@@ -47,9 +48,14 @@ export class ExportRecordsService {
     private readonly dbConnectionsService: DbConnectionsService,
     private readonly usageService: UsageService,
     private readonly subscriptionsService: SubscriptionsService,
+    private readonly projectsService: ProjectsService,
   ) {}
 
-  async findByProject(projectId: string): Promise<ExportRecordEntity[]> {
+  async findByProject(
+    userId: string,
+    projectId: string,
+  ): Promise<ExportRecordEntity[]> {
+    await this.projectsService.checkViewPermission(userId, projectId);
     return this.repo.find({
       where: { projectId },
       order: { createdAt: 'DESC' },
@@ -64,6 +70,7 @@ export class ExportRecordsService {
   ): Promise<ExportRecordEntity> {
     const operationId = randomUUID();
     const project = await this.requireProject(projectId);
+    await this.projectsService.checkWritePermission(userId, projectId);
     await this.subscriptionsService.assertFeatureForWorkspace(
       project.workspaceId,
       'export',
@@ -107,6 +114,7 @@ export class ExportRecordsService {
     dto: TrackExportUsageDto,
   ) {
     const project = await this.requireProject(projectId);
+    await this.projectsService.checkWritePermission(userId, projectId);
     await this.subscriptionsService.assertFeatureForWorkspace(
       project.workspaceId,
       'export',
@@ -122,7 +130,12 @@ export class ExportRecordsService {
     return this.usageService.commit(dto.operation_id);
   }
 
-  async remove(projectId: string, recordId: string): Promise<void> {
+  async remove(
+    userId: string,
+    projectId: string,
+    recordId: string,
+  ): Promise<void> {
+    await this.projectsService.checkWritePermission(userId, projectId);
     const record = await this.repo.findOne({
       where: { id: recordId, projectId },
     });
@@ -139,6 +152,7 @@ export class ExportRecordsService {
   }
 
   async rollback(userId: string, projectId: string, recordId: string) {
+    await this.projectsService.checkWritePermission(userId, projectId);
     const record = await this.repo.findOne({
       where: { id: recordId, projectId },
     });

@@ -32,7 +32,9 @@ import {
 } from '../ai-ingestion/ai-ingestion.service';
 import { GenerateSqlDto } from './dto/generate-sql.dto';
 import { WorkspacesService } from '@/modules/workspaces/workspaces.service';
+import { WorkspaceType } from '@/modules/workspaces/workspace.enums';
 import { ProjectEntity } from '@/modules/projects/entity/project.entity';
+import { ProjectsService } from '@/modules/projects/projects.service';
 import * as crypto from 'crypto';
 import { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
 import { UsageService } from '@/modules/usage/usage.service';
@@ -48,6 +50,7 @@ export class DbConnectionsService {
     private readonly projectsRepo: Repository<ProjectEntity>,
     private readonly aiIngestionService: AiIngestionService,
     private readonly workspacesService: WorkspacesService,
+    private readonly projectsService: ProjectsService,
     private readonly subscriptionsService: SubscriptionsService,
     private readonly usageService: UsageService,
   ) {}
@@ -146,8 +149,7 @@ export class DbConnectionsService {
       where: { id: connId },
     });
     if (!conn) throw new NotFoundException('Connection not found');
-    if (conn.createdBy !== userId)
-      throw new ForbiddenException('Not your connection');
+    await this.assertConnectionAccess(userId, conn);
     return this.sanitize(conn);
   }
 
@@ -156,8 +158,7 @@ export class DbConnectionsService {
       where: { id: connId },
     });
     if (!conn) throw new NotFoundException('Connection not found');
-    if (conn.createdBy !== userId)
-      throw new ForbiddenException('Not your connection');
+    await this.assertConnectionAccess(userId, conn);
 
     if (dto.name !== undefined) conn.name = dto.name;
     if (dto.dbms !== undefined) conn.dbms = dto.dbms;
@@ -196,8 +197,11 @@ export class DbConnectionsService {
       where: { id: connId },
     });
     if (!conn) throw new NotFoundException('Connection not found');
-    if (conn.createdBy !== userId)
-      throw new ForbiddenException('Not your connection');
+    // Deletion is destructive and cross-project (it removes the connection
+    // from every project that uses it, not just the caller's current one),
+    // so it needs a tighter check than "any active member" — creator or a
+    // workspace Owner/Admin only.
+    await this.assertConnectionManageAccess(userId, conn);
 
     await this.dbConnectionRepo.remove(conn);
   }
@@ -210,8 +214,7 @@ export class DbConnectionsService {
       where: { id: connId },
     });
     if (!conn) throw new NotFoundException('Connection not found');
-    if (conn.createdBy !== userId)
-      throw new ForbiddenException('Not your connection');
+    await this.assertConnectionAccess(userId, conn);
     const project = await this.projectsRepo.findOne({
       where: { id: projectId },
     });
@@ -239,8 +242,7 @@ export class DbConnectionsService {
       where: { id: connId },
     });
     if (!conn) throw new NotFoundException('Connection not found');
-    if (conn.createdBy !== userId)
-      throw new ForbiddenException('Not your connection');
+    await this.assertConnectionAccess(userId, conn);
 
     const link = await this.projectDbConnectionRepo.findOne({
       where: { projectId, dbConnectionId: connId },
@@ -277,8 +279,7 @@ export class DbConnectionsService {
       where: { id: connId },
     });
     if (!conn) throw new NotFoundException('Connection not found');
-    if (conn.createdBy !== userId)
-      throw new ForbiddenException('Not your connection');
+    await this.assertConnectionAccess(userId, conn);
 
     const params: ConnectParams = {
       dbms: conn.dbms,
@@ -320,11 +321,11 @@ export class DbConnectionsService {
       where: { id: connId },
     });
     if (!conn) throw new NotFoundException('Connection not found');
-    if (conn.createdBy !== userId)
-      throw new ForbiddenException('Not your connection');
+    await this.assertConnectionAccess(userId, conn);
 
     // Returns decrypted params so frontend can forward to local agent.
-    // Only accessible by the connection owner over authenticated HTTPS.
+    // Only accessible by the creator or an active member of the connection's
+    // workspace (see assertConnectionAccess), over authenticated HTTPS.
     return {
       dbms: conn.dbms,
       host: conn.host,
@@ -341,8 +342,7 @@ export class DbConnectionsService {
   async listSchemas(userId: string, connId: string): Promise<string[]> {
     const conn = await this.dbConnectionRepo.findOne({ where: { id: connId } });
     if (!conn) throw new NotFoundException('Connection not found');
-    if (conn.createdBy !== userId)
-      throw new ForbiddenException('Not your connection');
+    await this.assertConnectionAccess(userId, conn);
 
     return listSchemas({
       dbms: conn.dbms,
@@ -366,8 +366,7 @@ export class DbConnectionsService {
       where: { id: connId },
     });
     if (!conn) throw new NotFoundException('Connection not found');
-    if (conn.createdBy !== userId)
-      throw new ForbiddenException('Not your connection');
+    await this.assertConnectionAccess(userId, conn);
 
     return introspectSchema({
       dbms: conn.dbms,
@@ -394,8 +393,7 @@ export class DbConnectionsService {
       where: { id: connId },
     });
     if (!conn) throw new NotFoundException('Connection not found');
-    if (conn.createdBy !== userId)
-      throw new ForbiddenException('Not your connection');
+    await this.assertConnectionAccess(userId, conn);
 
     const schemaTables = await introspectSchema({
       dbms: conn.dbms,
@@ -460,8 +458,7 @@ export class DbConnectionsService {
       where: { id: connId },
     });
     if (!conn) throw new NotFoundException('Connection not found');
-    if (conn.createdBy !== userId)
-      throw new ForbiddenException('Not your connection');
+    await this.assertConnectionAccess(userId, conn);
 
     const params: ConnectParams = {
       dbms: conn.dbms,
@@ -490,8 +487,7 @@ export class DbConnectionsService {
   ): Promise<PermissionMatrix> {
     const conn = await this.dbConnectionRepo.findOne({ where: { id: connId } });
     if (!conn) throw new NotFoundException('Connection not found');
-    if (conn.createdBy !== userId)
-      throw new ForbiddenException('Not your connection');
+    await this.assertConnectionAccess(userId, conn);
 
     const params: ConnectParams = {
       dbms: conn.dbms,
@@ -518,6 +514,74 @@ export class DbConnectionsService {
   }
 
   // ─── Helpers ──────────────────────────────────────────
+
+  /**
+   * A DB connection belongs to whoever created it, but a Team-workspace
+   * connection is a shared resource — every active member of that
+   * workspace can use it, not just the creator. Personal-workspace
+   * connections stay owner-only (no membership table backs a personal
+   * workspace, so anyone else is always denied).
+   */
+  private async assertConnectionAccess(
+    userId: string,
+    conn: DbConnectionEntity,
+  ): Promise<void> {
+    if (conn.createdBy === userId) return;
+
+    const workspace = await this.workspacesService.assertResourceWorkspaceAccess(
+      userId,
+      conn.workspaceId,
+    );
+
+    // Team workspace: assertResourceWorkspaceAccess above already required
+    // an active membership, so reaching here means access is granted.
+    if (workspace.type === WorkspaceType.Team) return;
+
+    // Personal workspace: a connection isn't only visible to its creator —
+    // anyone who was individually invited (Share Project) to a project this
+    // connection is linked to should be able to use it too.
+    const links = await this.projectDbConnectionRepo.find({
+      where: { dbConnectionId: conn.id },
+    });
+    for (const link of links) {
+      try {
+        await this.projectsService.checkViewPermission(userId, link.projectId);
+        return;
+      } catch {
+        // No access to this particular linked project — try the next one.
+      }
+    }
+
+    throw new ForbiddenException('Not your connection');
+  }
+
+  /**
+   * Stricter than assertConnectionAccess — for destructive actions
+   * (deleting the connection outright, which affects every project that
+   * uses it). Only the creator or a Team workspace's Owner/Admin qualify;
+   * "any active member" / "any project collaborator" is too broad here.
+   */
+  private async assertConnectionManageAccess(
+    userId: string,
+    conn: DbConnectionEntity,
+  ): Promise<void> {
+    if (conn.createdBy === userId) return;
+
+    const workspace = await this.workspacesService.assertResourceWorkspaceAccess(
+      userId,
+      conn.workspaceId,
+    );
+    if (
+      workspace.type === WorkspaceType.Team &&
+      (await this.workspacesService.isOwnerOrAdmin(userId, conn.workspaceId))
+    ) {
+      return;
+    }
+
+    throw new ForbiddenException(
+      'Only the creator or a workspace Owner/Admin can delete this connection',
+    );
+  }
 
   private sanitize(conn: DbConnectionEntity) {
     return {

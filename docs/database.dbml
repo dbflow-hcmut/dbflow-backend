@@ -1,0 +1,641 @@
+// DBFlow backend database schema
+// Generated from TypeORM entities (src/modules/**/*.entity.ts) + migrations
+// Import at https://dbdiagram.io -> Create new diagram -> Import DBML
+
+//// ==================== ENUMS ====================
+
+Enum role {
+  user
+  admin
+}
+
+Enum user_status {
+  active
+  suspended
+}
+
+Enum workspace_type {
+  personal
+  team
+}
+
+Enum workspace_status {
+  active
+  suspended
+  archived
+}
+
+Enum workspace_role {
+  owner
+  admin
+  billing
+  member
+  viewer
+}
+
+Enum workspace_member_status {
+  active
+  suspended
+}
+
+Enum workspace_invitation_status {
+  pending
+  accepted
+  revoked
+  expired
+}
+
+Enum project_visibility {
+  owner_and_invited
+  anyone_can_view
+  anyone_can_edit
+}
+
+Enum user_project_permission {
+  viewer
+  editor
+}
+
+Enum invite_status {
+  pending
+  accepted
+  rejected
+}
+
+Enum schema_type {
+  conceptual
+  logical
+  physical
+}
+
+Enum db_connection_dbms {
+  postgresql
+  mysql
+  sqlserver
+}
+
+Enum db_connection_method {
+  direct
+  ssh
+  local_agent
+}
+
+Enum db_connection_status {
+  connected
+  failed
+  untested
+}
+
+Enum ssh_auth_type {
+  password
+  private_key
+}
+
+Enum project_document_source {
+  hub_upload
+  ai_chat_upload
+}
+
+Enum project_document_status {
+  uploaded
+  processing
+  ready
+  failed
+}
+
+Enum export_record_trigger {
+  manual
+  auto
+}
+
+Enum export_record_status {
+  success
+  partial
+  failed
+}
+
+Enum plan_workspace_type {
+  personal
+  team
+  any
+}
+
+Enum billing_cycle {
+  monthly
+  yearly
+  custom
+}
+
+Enum subscription_status {
+  trialing
+  active
+  past_due
+  canceled
+  expired
+  paused
+}
+
+Enum order_status {
+  pending
+  paid
+  failed
+  canceled
+  expired
+}
+
+Enum payment_transaction_status {
+  succeeded
+  failed
+}
+
+Enum usage_event_status {
+  reserved
+  committed
+  released
+}
+
+//// ==================== USERS & AUTH ====================
+
+Table users {
+  id uuid [pk, default: `gen_random_uuid()`]
+  email varchar(255) [not null, unique]
+  full_name varchar(255) [not null]
+  first_name varchar(255)
+  last_name varchar(255)
+  phone varchar(50)
+  bio text
+  avatar_key varchar(1000)
+  password varchar(255) [not null]
+  role role [not null, default: 'user']
+  status user_status [not null, default: 'active']
+  suspended_at timestamptz
+  suspended_reason text
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+
+  Note: 'Application users'
+}
+
+Table admin_audit_logs {
+  id uuid [pk]
+  admin_user_id uuid [not null]
+  action varchar(100) [not null]
+  target_type varchar(100) [not null]
+  target_id varchar(255) [not null]
+  before_data jsonb
+  after_data jsonb
+  reason text
+  created_at timestamptz [not null]
+}
+
+//// ==================== WORKSPACES ====================
+
+Table workspaces {
+  id uuid [pk]
+  type workspace_type [not null]
+  name varchar(255) [not null]
+  slug varchar(100) [not null, unique]
+  owner_user_id uuid [not null]
+  status workspace_status [not null, default: 'active']
+  avatar_key varchar(1000)
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+}
+
+Table workspace_members {
+  workspace_id uuid [pk]
+  user_id uuid [pk]
+  role workspace_role [not null]
+  status workspace_member_status [not null, default: 'active']
+  joined_at timestamptz [not null]
+  updated_at timestamptz [not null]
+}
+
+Table workspace_invitations {
+  id uuid [pk]
+  workspace_id uuid [not null]
+  email varchar(255) [not null]
+  role workspace_role [not null]
+  token_hash varchar(64) [not null, unique]
+  invited_by uuid [not null]
+  status workspace_invitation_status [not null, default: 'pending']
+  expires_at timestamptz [not null]
+  accepted_at timestamptz
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+
+  Indexes {
+    (workspace_id, email, status)
+  }
+}
+
+Table workspace_audit_logs {
+  id uuid [pk]
+  workspace_id uuid [not null]
+  actor_user_id uuid [not null]
+  action varchar(100) [not null]
+  target_type varchar(100) [not null]
+  target_id varchar(255) [not null]
+  before_data jsonb
+  after_data jsonb
+  created_at timestamptz [not null]
+}
+
+Table groups {
+  id uuid [pk]
+  workspace_id uuid [not null]
+  name varchar(100) [not null]
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+
+  Note: 'Team-workspace scoping / sub-groups within a workspace'
+}
+
+Table group_members {
+  group_id uuid [pk]
+  user_id uuid [pk]
+}
+
+//// ==================== PROJECTS & SCHEMAS ====================
+
+Table projects {
+  id uuid [pk]
+  owner_id uuid [not null]
+  workspace_id uuid [not null]
+  name varchar(255) [not null, default: 'Untitled Diagram']
+  description text
+  visibility project_visibility [not null, default: 'owner_and_invited']
+  group_id uuid [note: 'Team-workspace scoping only; ignored for Personal workspace projects']
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+}
+
+Table user_projects {
+  user_id uuid [pk]
+  project_id uuid [pk]
+  permission user_project_permission [not null]
+
+  Note: 'Direct per-user project membership/permission'
+}
+
+Table project_invitations {
+  id uuid [pk]
+  project_id uuid [not null]
+  email varchar [not null]
+  invited_user_id uuid
+  inviter_user_id uuid [not null]
+  permission user_project_permission [not null]
+  status invite_status [not null, default: 'pending']
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+
+  Indexes {
+    (project_id, email, status) [unique]
+  }
+}
+
+Table schemas {
+  id uuid [pk]
+  project_id uuid [not null]
+  name varchar(255) [not null, default: 'Untitled Schema']
+  type schema_type [not null]
+  dbms varchar(20)
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+
+  Note: 'A project can have conceptual / logical / physical schema variants'
+}
+
+Table schema_versions {
+  id uuid [pk]
+  schema_id uuid [not null]
+  version int [not null]
+  label varchar(255)
+  s3_key varchar(512) [not null]
+  created_by uuid [not null]
+  created_at timestamptz [not null]
+
+  Indexes {
+    (schema_id, version) [unique]
+  }
+}
+
+Table schema_sandboxes {
+  id uuid [pk]
+  schema_id uuid [not null, unique]
+  project_id uuid [not null]
+  s3_key varchar(512) [not null]
+  model_snapshot_s3_key varchar(512) [not null]
+  built_from_model_hash varchar(64) [not null]
+  last_used_at timestamptz [not null]
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+}
+
+Table comments {
+  id uuid [pk]
+  project_id uuid [not null]
+  schema_id uuid [not null]
+  user_id uuid [not null]
+  x float [not null, note: 'Canvas X position']
+  y float [not null, note: 'Canvas Y position']
+  content text [not null]
+  parent_id uuid [note: 'Parent comment id for threaded replies']
+  resolved boolean [not null, default: false]
+  node_id varchar(255) [note: 'Attached diagram node ID']
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+
+  Indexes {
+    (schema_id, resolved)
+  }
+}
+
+Table project_documents {
+  id uuid [pk]
+  project_id uuid [not null]
+  uploaded_by uuid [not null]
+  title varchar(255) [not null]
+  description text
+  file_name varchar(255) [not null]
+  s3_key text [not null]
+  mime_type varchar(120) [not null]
+  size int [not null]
+  source project_document_source [not null, default: 'hub_upload']
+  status project_document_status [not null, default: 'ready']
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+
+  Indexes {
+    (project_id, created_at)
+  }
+}
+
+//// ==================== DB CONNECTIONS / EXPORT ====================
+
+Table db_connections {
+  id uuid [pk]
+  created_by uuid [not null]
+  workspace_id uuid [not null]
+  name varchar(255) [not null]
+  dbms db_connection_dbms [not null]
+  method db_connection_method [not null, default: 'direct']
+  status db_connection_status [not null, default: 'untested']
+  host varchar(255) [not null]
+  port int
+  database varchar(255) [not null]
+  username varchar(255)
+  password_encrypted text
+  ssl boolean [not null, default: false]
+  ssh_host varchar(255)
+  ssh_port int
+  ssh_username varchar(255)
+  ssh_auth_type ssh_auth_type
+  ssh_password_encrypted text
+  ssh_private_key_encrypted text
+  last_tested_at timestamptz
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+}
+
+Table project_db_connections {
+  id uuid [pk]
+  project_id uuid [not null]
+  db_connection_id uuid [not null]
+  linked_at timestamptz [not null]
+
+  Indexes {
+    (project_id, db_connection_id) [unique]
+  }
+}
+
+Table export_records {
+  id uuid [pk]
+  project_id uuid [not null]
+  connection_id uuid [not null]
+  triggered_by uuid [not null]
+  trigger export_record_trigger [not null, default: 'manual']
+  status export_record_status [not null, default: 'success']
+  dbms varchar(50) [not null]
+  ddl_snapshot_before text [not null]
+  up_migration text [not null]
+  down_migration text [not null]
+  schema_version_ref uuid
+  notes text
+  created_at timestamptz [not null]
+
+  Indexes {
+    (project_id, created_at)
+  }
+
+  Note: 'project_id/connection_id/triggered_by/schema_version_ref are plain uuid pointers, no DB-level FK constraint'
+}
+
+//// ==================== BILLING & SUBSCRIPTIONS ====================
+
+Table plans {
+  id uuid [pk]
+  code varchar(50) [not null]
+  version int [not null, default: 1]
+  name varchar(100) [not null]
+  description text
+  workspace_type plan_workspace_type [not null]
+  currency varchar(3) [not null, default: 'VND']
+  monthly_base_price decimal(12,2) [not null, default: 0]
+  yearly_base_price decimal(12,2) [not null, default: 0]
+  monthly_seat_price decimal(12,2)
+  yearly_seat_price decimal(12,2)
+  included_seats int [not null, default: 1]
+  limits jsonb [not null, default: `'{}'::jsonb`]
+  features jsonb [not null, default: `'{}'::jsonb`]
+  ai_model varchar(120)
+  is_active boolean [not null, default: true]
+  display_order int [not null, default: 0]
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+
+  Indexes {
+    (code, version) [unique]
+  }
+}
+
+Table subscriptions {
+  id uuid [pk]
+  workspace_id uuid [not null]
+  plan_id uuid [not null]
+  status subscription_status [not null, default: 'active']
+  billing_cycle billing_cycle [not null]
+  quantity int [not null, default: 1]
+  provider varchar(50)
+  provider_customer_id varchar
+  provider_subscription_id varchar [unique]
+  current_period_start timestamptz [not null]
+  current_period_end timestamptz [not null]
+  cancel_at_period_end boolean [not null, default: false]
+  canceled_at timestamptz
+  metadata jsonb [not null, default: `'{}'::jsonb`]
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+}
+
+Table orders {
+  id uuid [pk]
+  order_number varchar [not null, unique]
+  provider_checkout_id varchar [unique]
+  provider_invoice_id varchar [unique]
+  workspace_id uuid
+  workspace_name varchar(120)
+  created_by uuid [not null]
+  plan_id uuid [not null]
+  subscription_id uuid
+  renewal_period_start timestamptz
+  renewal_period_end timestamptz
+  billing_cycle billing_cycle [not null]
+  quantity int [not null, default: 1]
+  amount bigint [not null]
+  currency varchar(3) [not null, default: 'VND']
+  status order_status [not null]
+  payment_link_id varchar
+  checkout_url text
+  paid_at timestamptz
+  expires_at timestamptz
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+}
+
+Table payment_transactions {
+  id uuid [pk]
+  order_id uuid [not null]
+  provider varchar(50) [not null, default: 'stripe']
+  provider_transaction_id varchar [not null, unique]
+  amount bigint [not null]
+  currency varchar(3) [not null]
+  status payment_transaction_status [not null]
+  raw_payload jsonb [not null]
+  created_at timestamptz [not null]
+}
+
+//// ==================== USAGE ====================
+
+Table usage_counters {
+  workspace_id uuid [pk]
+  user_id uuid [pk]
+  metric varchar(100) [pk]
+  period_key varchar(20) [pk]
+  used bigint [not null, default: 0]
+  reserved bigint [not null, default: 0]
+  updated_at timestamptz [not null]
+
+  Note: 'Aggregated per-period usage counters (rolling quota)'
+}
+
+Table usage_events {
+  id uuid [pk]
+  workspace_id uuid [not null]
+  user_id uuid [not null]
+  metric varchar(100) [not null]
+  quantity bigint [not null, default: 1]
+  operation_id varchar(100) [not null, unique]
+  period_key varchar(20) [not null]
+  status usage_event_status [not null]
+  metadata jsonb [not null, default: `'{}'::jsonb`]
+  input_tokens bigint [not null, default: 0]
+  output_tokens bigint [not null, default: 0]
+  model_calls int [not null, default: 0]
+  model_name varchar(120)
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+
+  Note: 'Individual usage/metering events (raw ledger)'
+}
+
+//// ==================== AI CHAT ====================
+
+Table chat_conversations {
+  id uuid [pk, note: 'Same as LangGraph thread_id']
+  user_id uuid [not null]
+  title varchar(255) [not null, default: 'New Chat']
+  project_id uuid
+  schema_id uuid
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+
+  Note: 'project_id/schema_id are plain uuid pointers, no DB-level FK constraint'
+}
+
+Table chat_messages {
+  id uuid [pk]
+  conversation_id uuid [not null]
+  role varchar(20) [not null, note: 'user | assistant']
+  content text [not null]
+  created_at timestamptz [not null]
+}
+
+//// ==================== RELATIONSHIPS ====================
+
+// Users / admin
+Ref: admin_audit_logs.admin_user_id > users.id [delete: restrict]
+
+// Workspaces
+Ref: workspaces.owner_user_id > users.id [delete: restrict]
+Ref: workspace_members.workspace_id > workspaces.id [delete: cascade]
+Ref: workspace_members.user_id > users.id [delete: cascade]
+Ref: workspace_invitations.workspace_id > workspaces.id [delete: cascade]
+Ref: workspace_invitations.invited_by > users.id [delete: cascade]
+Ref: workspace_audit_logs.workspace_id > workspaces.id [delete: cascade]
+Ref: workspace_audit_logs.actor_user_id > users.id [delete: restrict]
+
+// Groups
+Ref: groups.workspace_id > workspaces.id [delete: cascade]
+Ref: group_members.group_id > groups.id [delete: cascade]
+Ref: group_members.user_id > users.id [delete: cascade]
+
+// Projects
+Ref: projects.owner_id > users.id [delete: cascade]
+Ref: projects.workspace_id > workspaces.id [delete: restrict]
+Ref: projects.group_id > groups.id [delete: set null]
+Ref: user_projects.user_id > users.id [delete: cascade]
+Ref: user_projects.project_id > projects.id [delete: cascade]
+Ref: project_invitations.project_id > projects.id [delete: cascade]
+Ref: project_invitations.invited_user_id > users.id [delete: cascade]
+Ref: project_invitations.inviter_user_id > users.id [delete: cascade]
+
+// Schemas
+Ref: schemas.project_id > projects.id [delete: cascade]
+Ref: schema_versions.schema_id > schemas.id [delete: cascade]
+Ref: schema_sandboxes.schema_id > schemas.id [delete: cascade]
+
+// Comments
+Ref: comments.project_id > projects.id [delete: cascade]
+Ref: comments.schema_id > schemas.id [delete: cascade]
+Ref: comments.user_id > users.id [delete: cascade]
+Ref: comments.parent_id > comments.id [delete: cascade]
+
+// Project documents
+Ref: project_documents.project_id > projects.id [delete: cascade]
+Ref: project_documents.uploaded_by > users.id [delete: cascade]
+
+// DB connections / export
+Ref: db_connections.created_by > users.id [delete: cascade]
+Ref: db_connections.workspace_id > workspaces.id [delete: restrict]
+Ref: project_db_connections.project_id > projects.id [delete: cascade]
+Ref: project_db_connections.db_connection_id > db_connections.id [delete: cascade]
+
+// Billing / subscriptions
+Ref: subscriptions.workspace_id > workspaces.id [delete: cascade]
+Ref: subscriptions.plan_id > plans.id [delete: restrict]
+Ref: orders.workspace_id > workspaces.id [delete: set null]
+Ref: orders.created_by > users.id [delete: restrict]
+Ref: orders.plan_id > plans.id [delete: restrict]
+Ref: orders.subscription_id > subscriptions.id [delete: set null]
+Ref: payment_transactions.order_id > orders.id [delete: cascade]
+
+// Usage (FK added directly via migration SQL, not via TypeORM relations)
+Ref: usage_counters.workspace_id > workspaces.id [delete: cascade]
+Ref: usage_counters.user_id > users.id [delete: cascade]
+Ref: usage_events.workspace_id > workspaces.id [delete: cascade]
+Ref: usage_events.user_id > users.id [delete: cascade]
+
+// AI chat
+Ref: chat_conversations.user_id > users.id [delete: cascade]
+Ref: chat_messages.conversation_id > chat_conversations.id [delete: cascade]
