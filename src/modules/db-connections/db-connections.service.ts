@@ -506,7 +506,15 @@ export class DbConnectionsService {
       ssl: conn.ssl,
     };
 
-    return checkPermissions(params);
+    try {
+      return await checkPermissions(params);
+    } catch (error) {
+      // checkPostgres/checkMySQL don't catch connection failures themselves
+      // (unlike executeQuery, which always returns a { success: false }
+      // result) — surface it as a clean 400 instead of an opaque 500.
+      const message = error instanceof Error ? error.message : String(error);
+      throw new BadRequestException(`Could not check permissions: ${message}`);
+    }
   }
 
   // ─── Helpers ──────────────────────────────────────────
