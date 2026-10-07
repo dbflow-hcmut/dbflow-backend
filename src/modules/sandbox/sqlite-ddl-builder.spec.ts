@@ -123,4 +123,128 @@ describe('buildFullDDL', () => {
 
     db.close();
   });
+
+  it('groups references to every target composite-PK column into one composite foreign key', () => {
+    const model: PhysicalModelPayload = {
+      model: { id: 'pid_school', name: 'school', dbms: 'postgresql' },
+      tables: [
+        {
+          id: 't_section',
+          name: 'Section',
+          columns: [
+            {
+              id: 'c_section_course',
+              name: 'Course_id',
+              dataType: 'integer',
+              nullable: false,
+              unique: false,
+              roles: { primaryKey: true },
+            },
+            {
+              id: 'c_section_number',
+              name: 'section_number',
+              dataType: 'integer',
+              nullable: false,
+              unique: false,
+              roles: { primaryKey: true },
+            },
+          ],
+        },
+        {
+          id: 't_enrollment',
+          name: 'enrollment',
+          columns: [
+            {
+              id: 'c_enrollment_student',
+              name: 'Student_id',
+              dataType: 'integer',
+              nullable: false,
+              unique: false,
+              roles: { primaryKey: true },
+            },
+            {
+              id: 'c_enrollment_course',
+              name: 'Course_id',
+              dataType: 'integer',
+              nullable: false,
+              unique: false,
+              roles: {
+                primaryKey: true,
+                foreignKey: {
+                  refTableId: 't_section',
+                  refColumnId: 'c_section_course',
+                },
+              },
+            },
+            {
+              id: 'c_enrollment_section',
+              name: 'section_number',
+              dataType: 'integer',
+              nullable: false,
+              unique: false,
+              roles: {
+                primaryKey: true,
+                foreignKey: {
+                  refTableId: 't_section',
+                  refColumnId: 'c_section_number',
+                },
+              },
+            },
+          ],
+        },
+      ],
+    };
+    const statements = buildFullDDL(model);
+    const enrollmentDdl = statements.find((statement) =>
+      statement.startsWith('CREATE TABLE "enrollment"'),
+    );
+
+    expect(enrollmentDdl).toContain(
+      'FOREIGN KEY ("Course_id", "section_number") REFERENCES "Section"("Course_id", "section_number")',
+    );
+    expect(enrollmentDdl).not.toContain(
+      'FOREIGN KEY ("Course_id") REFERENCES "Section"("Course_id")',
+    );
+
+    const db = new Database(':memory:');
+    db.pragma('foreign_keys = ON');
+    for (const statement of statements) db.exec(statement);
+    db.exec(
+      'INSERT INTO "Section" ("Course_id", "section_number") VALUES (1, 1), (1, 2)',
+    );
+
+    expect(() =>
+      db.exec(
+        'INSERT INTO "enrollment" ("Student_id", "Course_id", "section_number") VALUES (10, 1, 2)',
+      ),
+    ).not.toThrow();
+    expect(() =>
+      db.exec(
+        'INSERT INTO "enrollment" ("Student_id", "Course_id", "section_number") VALUES (11, 2, 1)',
+      ),
+    ).toThrow(/FOREIGN KEY constraint failed/);
+    db.close();
+  });
+
+  it('keeps repeated references to the same single-column key as separate foreign keys', () => {
+    const model = sampleModel();
+    model.tables[1].columns.push({
+      id: 'c_orders_approver_id',
+      name: 'approver_id',
+      dataType: 'integer',
+      nullable: true,
+      unique: false,
+      roles: {
+        foreignKey: {
+          refTableId: 't_users',
+          refColumnId: 'c_users_id',
+        },
+      },
+    });
+
+    const ordersDdl = buildFullDDL(model).find((statement) =>
+      statement.startsWith('CREATE TABLE "orders"'),
+    );
+    expect(ordersDdl?.match(/REFERENCES "users"\("id"\)/g)).toHaveLength(2);
+  });
 });

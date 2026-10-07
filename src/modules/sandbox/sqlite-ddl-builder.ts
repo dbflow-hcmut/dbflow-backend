@@ -8,6 +8,7 @@
 import {
   PhysicalModelPayload,
   SandboxColumn,
+  SandboxForeignKey,
   SandboxTable,
 } from './sandbox.types';
 
@@ -100,14 +101,117 @@ export function topoSortTables(tables: SandboxTable[]): SandboxTable[] {
   return result;
 }
 
-function buildLookups(model: PhysicalModelPayload) {
-  const tableNameById = new Map<string, string>();
-  const columnNameById = new Map<string, string>();
-  for (const t of model.tables ?? []) {
-    tableNameById.set(t.id, t.name);
-    for (const c of t.columns) columnNameById.set(`${t.id}:${c.id}`, c.name);
+interface ForeignKeyColumn {
+  column: SandboxColumn;
+  foreignKey: SandboxForeignKey;
+}
+
+function formatForeignKeyDefinition(
+  sourceColumns: SandboxColumn[],
+  targetTable: SandboxTable,
+  targetColumns: SandboxColumn[],
+  foreignKeys: SandboxForeignKey[],
+): string {
+  const first = foreignKeys[0];
+  const onDelete =
+    foreignKeys.find((fk) => fk.onDelete?.trim())?.onDelete?.trim() ||
+    first.onDelete?.trim() ||
+    'NO ACTION';
+  const onUpdate =
+    foreignKeys.find((fk) => fk.onUpdate?.trim())?.onUpdate?.trim() ||
+    first.onUpdate?.trim() ||
+    'NO ACTION';
+
+  return `FOREIGN KEY (${sourceColumns.map((col) => quoteIdent(col.name)).join(', ')}) REFERENCES ${quoteIdent(
+    targetTable.name,
+  )}(${targetColumns.map((col) => quoteIdent(col.name)).join(', ')}) ON DELETE ${onDelete} ON UPDATE ${onUpdate}`;
+}
+
+/**
+ * Column-level FK metadata represents a composite FK as several columns that
+ * reference every column of the same target composite PK. Group those columns
+ * into one SQLite table constraint. Repeated references to the same target
+ * column start a separate group, preserving cases such as created_by and
+ * updated_by both referencing users.id.
+ */
+function buildForeignKeyDefinitions(
+  table: SandboxTable,
+  model: PhysicalModelPayload,
+): string[] {
+  const tableById = new Map(
+    (model.tables ?? []).map((item) => [item.id, item]),
+  );
+  const groupsByTarget = new Map<string, ForeignKeyColumn[][]>();
+
+  for (const column of table.columns) {
+    const foreignKey = column.roles?.foreignKey;
+    if (!foreignKey || !tableById.has(foreignKey.refTableId)) continue;
+
+    const groups = groupsByTarget.get(foreignKey.refTableId) ?? [];
+    const group = groups.find(
+      (candidate) =>
+        !candidate.some(
+          (entry) => entry.foreignKey.refColumnId === foreignKey.refColumnId,
+        ),
+    );
+    const entry = { column, foreignKey };
+    if (group) group.push(entry);
+    else groups.push([entry]);
+    groupsByTarget.set(foreignKey.refTableId, groups);
   }
-  return { tableNameById, columnNameById };
+
+  const definitions: string[] = [];
+  for (const [targetTableId, groups] of groupsByTarget) {
+    const targetTable = tableById.get(targetTableId);
+    if (!targetTable) continue;
+    const targetPrimaryKey = targetTable.columns.filter(
+      (column) => column.roles?.primaryKey,
+    );
+
+    for (const group of groups) {
+      const entryByTargetColumnId = new Map(
+        group.map((entry) => [entry.foreignKey.refColumnId, entry]),
+      );
+      const isCompleteCompositeReference =
+        targetPrimaryKey.length > 1 &&
+        group.length === targetPrimaryKey.length &&
+        targetPrimaryKey.every((column) =>
+          entryByTargetColumnId.has(column.id),
+        );
+
+      if (isCompleteCompositeReference) {
+        const orderedEntries = targetPrimaryKey.map(
+          (column) => entryByTargetColumnId.get(column.id)!,
+        );
+        definitions.push(
+          formatForeignKeyDefinition(
+            orderedEntries.map((entry) => entry.column),
+            targetTable,
+            targetPrimaryKey,
+            orderedEntries.map((entry) => entry.foreignKey),
+          ),
+        );
+        continue;
+      }
+
+      for (const entry of group) {
+        const targetColumn = targetTable.columns.find(
+          (column) => column.id === entry.foreignKey.refColumnId,
+        );
+        if (!targetColumn) continue;
+        definitions.push(
+          formatForeignKeyDefinition(
+            [entry.column],
+            targetTable,
+            [targetColumn],
+            [entry.foreignKey],
+          ),
+        );
+      }
+    }
+  }
+
+  return definitions;
 }
 
 /** Build the CREATE TABLE statement for a single table, resolving FK targets against the full model (the referenced table may be elsewhere in the model). */
@@ -115,8 +219,6 @@ export function buildTableSql(
   table: SandboxTable,
   model: PhysicalModelPayload,
 ): string {
-  const { tableNameById, columnNameById } = buildLookups(model);
-
   const pkCols = table.columns.filter((c) => c.roles?.primaryKey);
   const singleIntAutoPk: SandboxColumn | null =
     pkCols.length === 1 &&
@@ -126,7 +228,6 @@ export function buildTableSql(
       : null;
 
   const columnDefs: string[] = [];
-  const fkDefs: string[] = [];
 
   for (const col of table.columns) {
     const sqlType = mapSqliteType(col.dataType);
@@ -144,23 +245,6 @@ export function buildTableSql(
     }
 
     columnDefs.push(parts.join(' '));
-
-    const fk = col.roles?.foreignKey;
-    if (fk) {
-      const refTableName = tableNameById.get(fk.refTableId);
-      const refColName = columnNameById.get(
-        `${fk.refTableId}:${fk.refColumnId}`,
-      );
-      if (refTableName && refColName) {
-        const onDelete = fk.onDelete?.trim() || 'NO ACTION';
-        const onUpdate = fk.onUpdate?.trim() || 'NO ACTION';
-        fkDefs.push(
-          `FOREIGN KEY (${quoteIdent(col.name)}) REFERENCES ${quoteIdent(
-            refTableName,
-          )}(${quoteIdent(refColName)}) ON DELETE ${onDelete} ON UPDATE ${onUpdate}`,
-        );
-      }
-    }
   }
 
   if (!singleIntAutoPk && pkCols.length > 0) {
@@ -169,6 +253,7 @@ export function buildTableSql(
     );
   }
 
+  const fkDefs = buildForeignKeyDefinitions(table, model);
   const body = [...columnDefs, ...fkDefs].join(',\n  ');
   return `CREATE TABLE ${quoteIdent(table.name)} (\n  ${body}\n)`;
 }
